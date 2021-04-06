@@ -1,0 +1,404 @@
+
+---
+title: "real_HLA_data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(stringi)
+require(tidyr)
+require(ggplot2)
+library(plyr)
+library(pipeR)
+library(rlist)
+library(readxl)
+require(dplyr)
+require(data.table)
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+#sample_data <- read.delim(file="18Dec2020_Himba_HLA_LA_Output.txt")
+couples <- read_excel("HLA_Pairs_Sort.xls")
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+Himba_unrelated <- read.delim(file="keep_Himba_unrel4th.txt")
+sample_data <- read.table(file="HLA_typed_data/HLA_LA_output", sep="", row.names=NULL)
+sample_data<- sample_data %>%
+  row_to_names(row_number=1)
+
+```
+```{r}
+#extract only alleles of interest A, B, C, DQA/B, DRA/B, DPA/B  (should I look at DRB3/4 copies?)
+alleles <- list("A", "B", "C", "DQA1", "DQB1", "DRB1", "DPA1", "DPB1", "DRA")
+allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim", "DRAsim")
+allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2", "DRA-1", "DRA-2")
+
+#new data frame with only desired alleles 
+relevant_data <- sample_data[sample_data[,1]%in% alleles,]
+
+#extract best prediction for each allele of each sample stored in Relevant data
+ for (row in 1:nrow(relevant_data)){ 
+      relevant_data[row, ]$Allele <- stri_extract(relevant_data[row, ]$Allele, regex = '[^;]*' )}
+
+#extract just the Himba ID under sample_ID
+for (row in 1:nrow(relevant_data)){
+    relevant_data[row, ]$Sample_ID <- stri_extract(relevant_data[row, ]$Sample_ID, regex = '[^_]*')
+}
+
+
+#HMB to Scelza conversion
+ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+ID_conversion <- ID_conversion[,2:3]
+Himba_unrelated <- separate(Himba_unrelated, Sample_ID, c("HMB", "HMB_ID"), sep="HMB")
+#Himba_unrelated <- Himba_unrelated[,2]
+#for (row in 1:nrow(relevant_data)){
+    #for(name in 1:nrow(ID_conversion))
+    #if (relevant_data[row, ]$Sample_ID == ID_conversion[name, ]$HMB_ID)
+      #{relevant_data[row, ]$Sample_ID <- ID_conversion[name, ]$Scelza_ID}
+#}
+for (row in 1:nrow(Himba_unrelated)){
+    for(name in 1:nrow(ID_conversion))
+    if (Himba_unrelated[row, ]$HMB_ID == ID_conversion[name, ]$HMB_ID)
+      Himba_unrelated[row, ]$HMB_ID <- ID_conversion[name, ]$Scelza_ID
+}
+Himba_unrelated <- Himba_unrelated[,2]
+```
+```{r}
+#Quality checking the HLA-LA output
+  #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
+  for (row in 1:nrow(relevant_data)){
+    if (relevant_data[row, ]$Q1 < .98 | relevant_data[row, ]$Q1 > 1.02) {print ("Q1"); print(row)}
+  }
+  #plot Average Coverage (check for obvious outliers)
+   ggplot(relevant_data)+
+   geom_point(aes(x=Sample_ID, y=AverageCoverage, colour=Locus))+
+   theme_bw()
+   
+   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for     high quality Illumina sequecning)
+   for (row in 1:nrow(relevant_data)){
+    if (relevant_data[row, ]$proportionkMersCovered != 1) {print (row)}
+   }
+   
+   #NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
+   for (row in 1:nrow(relevant_data)){
+    if (relevant_data[row, ]$NColumns_UnaccountedAllele_fGT0.2 != 0) {print (row)}
+   }
+   
+   #plot locus avg column error (check for obvious outliers)
+   ggplot(relevant_data)+
+   geom_point(aes(x=Sample_ID, y=LocusAvgColumnError, colour=Locus))+
+   theme_bw()
+```
+
+#Compare married couples IBF scores to informal couples IBF scores
+
+```{r}
+#Set up formal and informal partnership dataframes
+couples_no_NA <- couples[!is.na(couples$current_status),]
+formal <- couples_no_NA[couples_no_NA$current_status!="Informal",2:3]
+informal <- couples_no_NA[couples_no_NA$current_status=="Informal",2:3]
+
+#add two individuals to formal whose love_match=no, but no current_status
+formal <- rbind(formal, couples[126, 2:3])
+formal <- rbind(formal, couples[129, 2:3])
+
+#extract same pairing occuring on multiple rows
+formal <- formal[!duplicated(formal),]
+informal <- informal[!duplicated(informal),]
+num_pairs <- nrow(formal) + nrow(informal)
+ind1 <- sample(Himba_unrelated, num_pairs, replace=TRUE)
+ind2 <- sample(Himba_unrelated, num_pairs, replace = TRUE)
+random <- data.frame(ind1, ind2)
+#random[1,1] <- 3122
+#random[9,1] <- 75
+row <- 1
+while (row <= nrow(random)){
+  identical<-identical(random[row,1], random[row,2])
+  if (identical) {random[row,1] <- sample(Himba_unrelated, 1)}
+  row <- row + 1}
+
+formal [, c(colnames(allele_list))] <- 0
+informal[, c(colnames(allele_list))] <- 0
+random[, c(colnames(allele_list))] <- 0
+```
+
+
+```{r}
+relevant_data <- relevant_data %>% arrange(desc(Sample_ID))
+unique_samples <- unique(relevant_data$Sample_ID)
+df <- data.frame(unique_samples)
+#df <- df[,2]
+df[, c(colnames(allele_sim))] <- 0
+#df <- df[,-1]
+
+#df[,1] <- unique_samples
+
+df$Sample_ID <- df$unique_samples
+df <- df[,-1]
+for(row in unique_samples){
+  i<-2
+  while(i<= 2*length(alleles)+1){
+  df[df$Sample_ID==row, ][i] <- relevant_data[relevant_data$Sample_ID==row, 3][i-1]
+  i <- i + 1
+  }
+}
+
+```
+
+
+
+```{r}
+
+#write comparison scores into random, formal, informal
+#formal
+#formal[1,1] <- 2991
+#formal[1,2] <- 2990
+
+row <- 1
+while(row <= nrow(formal)){
+  if(formal[row,1] %in% df$Sample_ID & formal[row,2]%in%df$Sample_ID)
+    {
+    female <- formal[row,]$Female_ID;
+    male <- formal[row,]$Male_ID;
+    female_geno <- df[df$Sample_ID==female,];
+    male_geno <- df[df$Sample_ID==male,];
+    i <- 2;
+    j <- 3;
+    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+        if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){formal[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){formal[row, j] <- 0.5}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){formal[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){formal[row, j] <- 0.5}
+        else {formal[row,j]<-0}
+        j <- j + 1
+        i <- i + 2};
+    }
+  row <- row +1 }
+
+#Testing to make sure similarity score works
+#female_geno[1] <- "a"
+#female_geno[2] <- "b"
+#male_geno [1] <- "b"
+#male_geno [2] <- "b"
+#i<-1
+#while(i==1){
+#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
+# else{print("0")}
+ # i <- i +1}
+
+formal$Total_sim <- apply(X=formal[,3:11], MARGIN=1, FUN=sum)
+
+```
+
+
+
+```{r}
+#informal
+#informal[1,1] <- 2991
+#informal[1,2] <- 2990
+
+row <- 1
+while(row <= nrow(informal)){
+  if(informal[row,1] %in% df$Sample_ID & informal[row,2]%in%df$Sample_ID)
+    {
+    female <- informal[row,]$Female_ID;
+    male <- informal[row,]$Male_ID;
+    female_geno <- df[df$Sample_ID==female,];
+    male_geno <- df[df$Sample_ID==male,];
+    i <- 2;
+    j <- 3;
+    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+        if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){informal[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){informal[row, j] <- 0.5}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){informal[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){informal[row, j] <- 0.5}
+        else {informal[row,j]<-0}
+        j <- j + 1
+        i <- i + 2};
+    }
+  row <- row +1 }
+
+#Testing to make sure similarity score works
+#female_geno[1] <- "a"
+#female_geno[2] <- "b"
+#male_geno [1] <- "b"
+#male_geno [2] <- "b"
+#i<-1
+#while(i==1){
+#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
+# else{print("0")}
+ # i <- i +1}
+
+informal$Total_sim <- apply(X=informal[,3:11], MARGIN=1, FUN=sum)
+```
+
+```{r}
+#random (female vs male meaningless for random)
+#random[1,1] <- 2991
+#random[1,2] <- 2990
+
+row <- 1
+while(row <= nrow(random)){
+  if(random[row,1] %in% df$Sample_ID & random[row,2]%in%df$Sample_ID)
+    {
+    female <- random[row,]$ind1;
+    male <- random[row,]$ind2;
+    female_geno <- df[df$Sample_ID==female,];
+    male_geno <- df[df$Sample_ID==male,];
+    i <- 2;
+    j <- 3;
+    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+        if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){random[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){random[row, j] <- 0.5}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){random[row, j] <- 1}
+        else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){random[row, j] <- 0.5}
+        else {random[row,j]<-0}
+        j <- j + 1
+        i <- i + 2};
+    }
+  row <- row +1 }
+
+#Testing to make sure similarity score works
+#female_geno[1] <- "a"
+#female_geno[2] <- "b"
+#male_geno [1] <- "b"
+#male_geno [2] <- "b"
+#i<-1
+#while(i==1){
+#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
+# else{print("0")}
+ # i <- i +1}
+
+random$Total_sim <- apply(X=random[,3:11], MARGIN=1, FUN=sum)
+```
+```{r}
+germline <- read.delim(file="corrected_allmatches.txt")
+germline <- separate(germline, Ind1, c("HMB", "HMB_ID"), sep="HMB")
+germline <- separate(germline, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
+germline <- germline[,-1]
+germline <- germline[,-2]
+#germline <- separate(germline, HMB_ID, c("one", "ind_1"), sep="Himba")
+#germline <- separate(germline, HMB_ID2, c("three", "ind_2"), sep="Himba")
+#germline <- germline[,-1]
+#germline <- germline[,-2]
+```
+```{r}
+#convert IDs in germline to IDs that will match the random, formal, and informal pairs sheet
+ID_conversion$diff <- NA
+
+row <- 1
+while(row <= nrow(ID_conversion)){
+  if(ID_conversion[row, 1] == ID_conversion[row, 2])
+  {ID_conversion[row,3]<-"no"}
+  else{ID_conversion[row,3]<-"yes"}
+  row <- row + 1
+}
+
+row <- 1
+while(row <= nrow(germline)){
+  if (germline[row,1] %in% ID_conversion$HMB_ID){
+    if (ID_conversion[ID_conversion$HMB_ID==germline[row,1], 3]=="yes")
+    {germline[row,1]<-ID_conversion[ID_conversion$HMB_ID==germline[row,1], 2]}
+    else{print("same")}}
+  else if (germline[row,1] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+
+row <- 1
+while(row <= nrow(germline)){
+  if (germline[row,2] %in% ID_conversion$HMB_ID){
+    if (ID_conversion[ID_conversion$HMB_ID==germline[row,2], 3]=="yes")
+    {germline[row,2]<-ID_conversion[ID_conversion$HMB_ID==germline[row,2], 2]; print("diff")}
+    else{print("same")}}
+  else if (germline[row,2] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+                      
+```
+```{r}
+#for each pairing (formal, informal, random) get their IBD sharing
+formal$IBD_sharing <- 0
+informal$IBD_sharing <- 0
+random$IBD_sharing <- 0
+#formal[row,13]<-sum(all_segs)
+
+#for each pair in the formal pairs dataframe sum their IBD and put in new column (13)
+row <- 1
+while(row <= nrow(formal)){
+  all_segs <- 0
+  one <- formal[row,1]
+  two <- formal[row,2]
+  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  if(rows_of_segs>0)
+  {print(rows_of_segs);print("row1");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  else if(rows_of_segs2>0)
+  {print(rows_of_segs2);print("row2");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  else{print("no match")}
+  row <- row + 1
+}
+```
+
+```{r}
+row <- 1
+while(row <= nrow(informal)){
+  all_segs <- 0
+  one <- informal[row,1]
+  two <- informal[row,2]
+  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  if(rows_of_segs>0)
+  {print(rows_of_segs);print("row1");print(row);informal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  else if(rows_of_segs2>0)
+  {print(rows_of_segs2);print("row2");print(row);informal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  else{print("no match")}
+  row <- row + 1
+}
+```
+```{r}
+row <- 1
+while(row <= nrow(random)){
+  all_segs <- 0
+  one <- random[row,1]
+  two <- random[row,2]
+  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  if(rows_of_segs>0)
+  {print(rows_of_segs);print("row1");print(row);random[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  else if(rows_of_segs2>0)
+  {print(rows_of_segs2);print("row2");print(row);random[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  else{print("no match")}
+  row <- row + 1
+}
+```
+```{r}
+test <- as.data.frame(combn(Himba_unrelated,2))
+test <- t(test)
+#test$IBD_sharing <- 0
+storage <- vector()
+row <- 1
+while(row <= nrow(test)){
+  all_segs <- 0
+  one <- test[row,1]
+  two <- test[row,2]
+  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  if(rows_of_segs>0)
+  {print(rows_of_segs);print("row1");print(row);storage <- c(storage, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
+  else if(rows_of_segs2>0)
+  {print(rows_of_segs2);print("row2");print(row);storage <- c(storage, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
+  else{print("no match")}
+  row <- row + 1
+}
+storage <- as.numeric(storage$storage)
+hist(storage)
+```
+
