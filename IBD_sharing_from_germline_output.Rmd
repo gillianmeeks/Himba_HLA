@@ -18,6 +18,7 @@ ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
 ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
 ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
 ID_conversion <- ID_conversion[,2:3]
+Himba_unrelated <- read.delim(file="keep_Himba_unrel4th.txt")
 ```
 
 
@@ -71,9 +72,9 @@ while(row <= nrow(formal)){
   rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
   rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {print(rows_of_segs);print("row1");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  {formal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {print(rows_of_segs2);print("row2");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  {formal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
   else{print("no match")}
   row <- row + 1
 }
@@ -81,34 +82,38 @@ while(row <= nrow(formal)){
 
 ```{r}
 #informal
+informal_test <- informal[,10:11]
+informal_ <- vector()
 row <- 1
 while(row <= nrow(informal)){
   all_segs <- 0
-  one <- informal[row,1]
-  two <- informal[row,2]
+  one <- informal_test[row,1]
+  two <- informal_test[row,2]
   rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
   rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {print(rows_of_segs);print("row1");print(row);informal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  {informal_<-c(informal_, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
   else if(rows_of_segs2>0)
-  {print(rows_of_segs2);print("row2");print(row);informal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  {informal_<-c(informal_, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
   else{print("no match")}
   row <- row + 1
 }
 ```
 ```{r}
 #random
+random_test <- random[,10:11]
+random_ <- vector()
 row <- 1
-while(row <= nrow(random)){
+while(row <= nrow(random_test)){
   all_segs <- 0
-  one <- random[row,1]
-  two <- random[row,2]
+  one <- random_test[row,1]
+  two <- random_test[row,2]
   rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
   rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {print(rows_of_segs);print("row1");print(row);random[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  {random_<-c(random_, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
   else if(rows_of_segs2>0)
-  {print(rows_of_segs2);print("row2");print(row);random[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  {random_<-c(random_, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
   else{print("no match")}
   row <- row + 1
 }
@@ -117,6 +122,9 @@ while(row <= nrow(random)){
 #IBD from the whole Himba_unrelated
 test <- as.data.frame(combn(Himba_unrelated,2))
 test <- t(test)
+test <- as.data.frame(test)
+test$IBD_sharing <- 0
+
 #test$IBD_sharing <- 0
 storage <- vector()
 row <- 1
@@ -127,12 +135,12 @@ while(row <= nrow(test)){
   rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
   rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {print(rows_of_segs);print("row1");print(row);storage <- c(storage, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
+  {test[row,3] <-  sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {print(rows_of_segs2);print("row2");print(row);storage <- c(storage, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
+  {test[row,3] <- sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
   else{print("no match")}
   row <- row + 1
 }
-storage <- as.numeric(storage$storage)
+#storage <- as.numeric(storage$storage)
 hist(storage)
 ```
