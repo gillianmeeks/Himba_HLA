@@ -14,9 +14,9 @@ library(rlist)
 library(readxl)
 require(dplyr)
 require(data.table)
+library(janitor)
 knitr::opts_chunk$set(echo = TRUE)
 setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
-#sample_data <- read.delim(file="18Dec2020_Himba_HLA_LA_Output.txt")
 couples <- read_excel("HLA_Pairs_Sort.xls")
 ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
 Himba_unrelated <- read.delim(file="keep_Himba_unrel4th.txt")
@@ -26,10 +26,11 @@ sample_data<- sample_data %>%
 
 ```
 ```{r}
-#extract only alleles of interest A, B, C, DQA/B, DRA/B, DPA/B  (should I look at DRB3/4 copies?)
-alleles <- list("A", "B", "C", "DQA1", "DQB1", "DRB1", "DPA1", "DPB1", "DRA")
-allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim", "DRAsim")
-allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2", "DRA-1", "DRA-2")
+#extract only alleles of interest A, B, C, DQA/B, DRB, DPA/B  (should I look at DRB3/4 copies?) 
+#no DRA on 4_2_21 HLA_LA_output so took out, HLA_LA paper only looks at A, B, C, DQA1, DQB1, DRB1
+alleles <- list("A", "B", "C", "DQA1", "DQB1", "DRB1", "DPA1", "DPB1")
+allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim")
+allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2")
 
 #new data frame with only desired alleles 
 relevant_data <- sample_data[sample_data[,1]%in% alleles,]
@@ -63,27 +64,46 @@ for (row in 1:nrow(Himba_unrelated)){
 Himba_unrelated <- Himba_unrelated[,2]
 ```
 ```{r}
+
+relevant_data$Q1 <- as.numeric(relevant_data$Q1)
+relevant_data$AverageCoverage <- as.numeric(relevant_data$AverageCoverage)
+relevant_data$CoverageFirstDecile <- as.numeric(relevant_data$CoverageFirstDecile)
+relevant_data$proportionkMersCovered <- as.numeric(relevant_data$proportionkMersCovered)
+relevant_data$LocusAvgColumnError <- as.numeric(relevant_data$LocusAvgColumnError)
+relevant_data$perfectG <- as.numeric(relevant_data$perfectG)
+relevant_data$Sample_ID <- as.numeric(relevant_data$Sample_ID)
 #Quality checking the HLA-LA output
   #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
-  for (row in 1:nrow(relevant_data)){
-    if (relevant_data[row, ]$Q1 < .98 | relevant_data[row, ]$Q1 > 1.02) {print ("Q1"); print(row)}
+  #drops row if <= 0.8, right now drops 17 rows
+row <- 1
+while (row <= nrow(relevant_data)){
+    if (relevant_data[row, ]$Q1 <= 0.8) {relevant_data <- relevant_data[-c(row),]}
+  row <- row + 1
   }
-  #plot Average Coverage (check for obvious outliers)
+  #plot Average Coverage (check for obvious outliers), tbd what is an obvious outlier?
+  #AverageCoverage fluctuates between samples and loci, but its expectation depends on average whole-genome coverage.
    ggplot(relevant_data)+
    geom_point(aes(x=Sample_ID, y=AverageCoverage, colour=Locus))+
    theme_bw()
    
-   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for     high quality Illumina sequecning)
-   for (row in 1:nrow(relevant_data)){
-    if (relevant_data[row, ]$proportionkMersCovered != 1) {print (row)}
+   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequecning), dropped 102 != 1
+  row <- 1
+   while (row <= nrow(relevant_data)){
+    if (relevant_data[row, ]$proportionkMersCovered != 1) {relevant_data <- relevant_data[-c(row),]}
+     row <- row + 1
    }
    
    #NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
    for (row in 1:nrow(relevant_data)){
     if (relevant_data[row, ]$NColumns_UnaccountedAllele_fGT0.2 != 0) {print (row)}
    }
+  
+  #no supposed to have perfectG != 1, but there are lots...
+  for (row in 1:nrow(relevant_data)){
+    if (relevant_data[row, ]$perfectG != 1) {print (row)}
+   }
    
-   #plot locus avg column error (check for obvious outliers)
+   #plot locus avg column error (check for obvious outliers?), not sure what is an obvious outlier
    ggplot(relevant_data)+
    geom_point(aes(x=Sample_ID, y=LocusAvgColumnError, colour=Locus))+
    theme_bw()
@@ -105,17 +125,19 @@ formal <- rbind(formal, couples[129, 2:3])
 formal <- formal[!duplicated(formal),]
 informal <- informal[!duplicated(informal),]
 num_pairs <- nrow(formal) + nrow(informal)
-ind1 <- sample(Himba_unrelated, num_pairs, replace=TRUE)
-ind2 <- sample(Himba_unrelated, num_pairs, replace = TRUE)
+#replace Himba_unrelated with relevant_data ids for now
+ind1 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace=TRUE)
+ind2 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace = TRUE)
 random <- data.frame(ind1, ind2)
-#random[1,1] <- 3122
-#random[9,1] <- 75
+
+#make sure the random pairs are two different individuals
 row <- 1
 while (row <= nrow(random)){
   identical<-identical(random[row,1], random[row,2])
   if (identical) {random[row,1] <- sample(Himba_unrelated, 1)}
   row <- row + 1}
 
+#set allele sim to 0 as default
 formal [, c(colnames(allele_list))] <- 0
 informal[, c(colnames(allele_list))] <- 0
 random[, c(colnames(allele_list))] <- 0
@@ -126,20 +148,39 @@ random[, c(colnames(allele_list))] <- 0
 relevant_data <- relevant_data %>% arrange(desc(Sample_ID))
 unique_samples <- unique(relevant_data$Sample_ID)
 df <- data.frame(unique_samples)
-#df <- df[,2]
 df[, c(colnames(allele_sim))] <- 0
-#df <- df[,-1]
-
-#df[,1] <- unique_samples
-
+#Initialize to just the gene name to make sure that for individuals with fewer alleles because some had insufficient quality, just the gene name is there
+df$X.A.1. <- "A"
+df$X.A.2. <- "A"
+df$X.B.1. <- "B"
+df$X.B.2. <- "B"
+df$X.C.1. <- "C"
+df$X.C.2. <- "C"
+df$X.DQA1.1. <- "DQA1"
+df$X.DQA1.2. <- "DQA1"
+df$X.DQB1.1. <- "DQB1"
+df$X.DQB1.2. <- "DQB1"
+df$X.DRB1.1. <- "DRB1"
+df$X.DRB1.2. <- "DRB1"
+df$X.DPA1.1. <- "DPA1"
+df$X.DPA1.2. <- "DPA1"
+df$X.DPB1.1. <- "DPB1"
+df$X.DPB1.2. <- "DPB1"
 df$Sample_ID <- df$unique_samples
 df <- df[,-1]
-for(row in unique_samples){
-  i<-2
-  while(i<= 2*length(alleles)+1){
-  df[df$Sample_ID==row, ][i] <- relevant_data[relevant_data$Sample_ID==row, 3][i-1]
-  i <- i + 1
+
+#Create df, which contains each individual's allele type.  When there were alleles that were removed because of QC, the gene name is the placeholder.  Later could put in the else clause to change placeholder to NA if need be.
+k<-1
+while(k <= length(unique_samples)){
+  row <- unique_samples[k]
+  i<-1
+  j<-1
+  while(i<= length(allele_sim) & j <= length(relevant_data[relevant_data$Sample_ID==row, 3])){
+  if(relevant_data[relevant_data$Sample_ID==row, 1][j] == df[df$Sample_ID==row, ][i])
+  {df[df$Sample_ID==row, ][i] <- relevant_data[relevant_data$Sample_ID==row, 3][j]; i <- i + 1; j <-j + 1}
+    else{i<-i+1}
   }
+  k <- k + 1
 }
 
 ```
@@ -147,26 +188,31 @@ for(row in unique_samples){
 
 
 ```{r}
-
 #write comparison scores into random, formal, informal
 #formal
-#formal[1,1] <- 2991
-#formal[1,2] <- 2990
-
+formal$Total_sim <- 0
+formal$Female_ID[1]<- 3000
+formal$Male_ID[1]<- 3061
+formal <- formal %>% relocate(Female_ID, .after=Total_sim)
+formal <- formal %>% relocate(Male_ID, .after=Total_sim)
 row <- 1
 while(row <= nrow(formal)){
-  if(formal[row,1] %in% df$Sample_ID & formal[row,2]%in%df$Sample_ID)
+  if(formal[row,10] %in% df$Sample_ID & formal[row,11]%in%df$Sample_ID)
     {
     female <- formal[row,]$Female_ID;
     male <- formal[row,]$Male_ID;
     female_geno <- df[df$Sample_ID==female,];
     male_geno <- df[df$Sample_ID==male,];
-    i <- 2;
-    j <- 3;
-    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+    i <- 1;
+    j <- 1;
+    while(i <= 2*length(allele_list)){
+        #if both female alleles are the same, a female allele equals
         if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){formal[row, j] <- 1}
+        #if two of the same in one individuals that matches one in the other 
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){formal[row, j] <- 0.5}
+        #if female 1 equals one of the male ones and female 2 equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){formal[row, j] <- 1}
+        #if female 1 equals one of the male ones or female two equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){formal[row, j] <- 0.5}
         else {formal[row,j]<-0}
         j <- j + 1
@@ -175,44 +221,49 @@ while(row <= nrow(formal)){
   row <- row +1 }
 
 #Testing to make sure similarity score works
-#female_geno[1] <- "a"
+#female_geno[1] <- "A"
 #female_geno[2] <- "b"
 #male_geno [1] <- "b"
-#male_geno [2] <- "b"
+#male_geno [2] <- "a"
 #i<-1
 #while(i==1){
 #if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("1")}
 #else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
-# else{print("0")}
- # i <- i +1}
+#else{print("0")}
+ #i <- i +1}
 
-formal$Total_sim <- apply(X=formal[,3:11], MARGIN=1, FUN=sum)
+formal$Total_sim <- apply(X=formal[,1:8], MARGIN=1, FUN=sum)
 
 ```
 
 
 
 ```{r}
-#informal
-#informal[1,1] <- 2991
-#informal[1,2] <- 2990
-
+informal$Total_sim <- 0
+informal$Female_ID[1]<- 3000
+informal$Male_ID[1]<- 3061
+informal <- informal %>% relocate(Female_ID, .after=Total_sim)
+informal <- informal %>% relocate(Male_ID, .after=Total_sim)
 row <- 1
 while(row <= nrow(informal)){
-  if(informal[row,1] %in% df$Sample_ID & informal[row,2]%in%df$Sample_ID)
+  if(informal[row,10] %in% df$Sample_ID & informal[row,11]%in%df$Sample_ID)
     {
     female <- informal[row,]$Female_ID;
     male <- informal[row,]$Male_ID;
     female_geno <- df[df$Sample_ID==female,];
     male_geno <- df[df$Sample_ID==male,];
-    i <- 2;
-    j <- 3;
-    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+    i <- 1;
+    j <- 1;
+    while(i <= 2*length(allele_list)){
+        #if both female alleles are the same, a female allele equals
         if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){informal[row, j] <- 1}
+        #if two of the same in one individuals that matches one in the other 
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){informal[row, j] <- 0.5}
+        #if female 1 equals one of the male ones and female 2 equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){informal[row, j] <- 1}
+        #if female 1 equals one of the male ones or female two equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){informal[row, j] <- 0.5}
         else {informal[row,j]<-0}
         j <- j + 1
@@ -220,42 +271,36 @@ while(row <= nrow(informal)){
     }
   row <- row +1 }
 
-#Testing to make sure similarity score works
-#female_geno[1] <- "a"
-#female_geno[2] <- "b"
-#male_geno [1] <- "b"
-#male_geno [2] <- "b"
-#i<-1
-#while(i==1){
-#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
-# else{print("0")}
- # i <- i +1}
 
-informal$Total_sim <- apply(X=informal[,3:11], MARGIN=1, FUN=sum)
+informal$Total_sim <- apply(X=informal[,1:8], MARGIN=1, FUN=sum)
+
 ```
 
 ```{r}
-#random (female vs male meaningless for random)
-#random[1,1] <- 2991
-#random[1,2] <- 2990
-
+#random
+random$Total_sim <- 0
+random$ind1[1]<- 3000
+random$ind2[1]<- 3061
+random <- random %>% relocate(ind1, .after=Total_sim)
+random <- random %>% relocate(ind2, .after=Total_sim)
 row <- 1
 while(row <= nrow(random)){
-  if(random[row,1] %in% df$Sample_ID & random[row,2]%in%df$Sample_ID)
+  if(random[row,10] %in% df$Sample_ID & random[row,11]%in%df$Sample_ID)
     {
     female <- random[row,]$ind1;
     male <- random[row,]$ind2;
     female_geno <- df[df$Sample_ID==female,];
     male_geno <- df[df$Sample_ID==male,];
-    i <- 2;
-    j <- 3;
-    while(i <= 2*length(allele_list) & j<=length(allele_list)+2){
+    i <- 1;
+    j <- 1;
+    while(i <= 2*length(allele_list)){
+        #if both female alleles are the same, a female allele equals
         if(female_geno[i]==female_geno[i+1] && female_geno[i]==male_geno[i] && male_geno[i]==male_geno[i+1]){random[row, j] <- 1}
+        #if two of the same in one individuals that matches one in the other 
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1])) && ((female_geno[i]==female_geno[i+1]) || (male_geno[i]==male_geno[i+1]))){random[row, j] <- 0.5}
+        #if female 1 equals one of the male ones and female 2 equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) && ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){random[row, j] <- 1}
+        #if female 1 equals one of the male ones or female two equals one of the male ones
         else if(((female_geno[i] == male_geno[i]) || (female_geno[i] == male_geno[i+1])) || ((female_geno[i+1] == male_geno[i]) || (female_geno[i+1] == male_geno[i+1]))){random[row, j] <- 0.5}
         else {random[row,j]<-0}
         j <- j + 1
@@ -263,21 +308,8 @@ while(row <= nrow(random)){
     }
   row <- row +1 }
 
-#Testing to make sure similarity score works
-#female_geno[1] <- "a"
-#female_geno[2] <- "b"
-#male_geno [1] <- "b"
-#male_geno [2] <- "b"
-#i<-1
-#while(i==1){
-#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || #(female_geno[2] == male_geno[2]))){print("1")}
-#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
-# else{print("0")}
- # i <- i +1}
+random$Total_sim <- apply(X=random[,1:8], MARGIN=1, FUN=sum)
 
-random$Total_sim <- apply(X=random[,3:11], MARGIN=1, FUN=sum)
 ```
 ```{r}
 germline <- read.delim(file="corrected_allmatches.txt")
