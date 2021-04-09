@@ -1,0 +1,78 @@
+---
+title: "IBD_sharing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+germline <- read.delim(file="corrected_allmatches.txt")
+germline <- separate(germline, Ind1, c("HMB", "HMB_ID"), sep="HMB")
+germline <- separate(germline, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
+germline <- germline[,-1]
+germline <- germline[,-2]
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+#HMB to Scelza conversion
+ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+ID_conversion <- ID_conversion[,2:3]
+```
+
+
+```{r}
+#convert IDs in germline to IDs that will match the random, formal, and informal pairs sheet
+ID_conversion$diff <- NA
+
+row <- 1
+while(row <= nrow(ID_conversion)){
+  if(ID_conversion[row, 1] == ID_conversion[row, 2])
+  {ID_conversion[row,3]<-"no"}
+  else{ID_conversion[row,3]<-"yes"}
+  row <- row + 1
+}
+
+row <- 1
+while(row <= nrow(germline)){
+  if (germline[row,1] %in% ID_conversion$HMB_ID){
+    if (ID_conversion[ID_conversion$HMB_ID==germline[row,1], 3]=="yes")
+    {germline[row,1]<-ID_conversion[ID_conversion$HMB_ID==germline[row,1], 2]}
+    else{print("same")}}
+  else if (germline[row,1] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+
+row <- 1
+while(row <= nrow(germline)){
+  if (germline[row,2] %in% ID_conversion$HMB_ID){
+    if (ID_conversion[ID_conversion$HMB_ID==germline[row,2], 3]=="yes")
+    {germline[row,2]<-ID_conversion[ID_conversion$HMB_ID==germline[row,2], 2]; print("diff")}
+    else{print("same")}}
+  else if (germline[row,2] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+                      
+```
+```{r}
+#for each pairing (formal, informal, random) get their IBD sharing
+formal$IBD_sharing <- 0
+informal$IBD_sharing <- 0
+random$IBD_sharing <- 0
+#formal[row,13]<-sum(all_segs)
+
+#for each pair in the formal pairs dataframe sum their IBD and put in new column (13)
+row <- 1
+while(row <= nrow(formal)){
+  all_segs <- 0
+  one <- formal[row,1]
+  two <- formal[row,2]
+  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  if(rows_of_segs>0)
+  {print(rows_of_segs);print("row1");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  else if(rows_of_segs2>0)
+  {print(rows_of_segs2);print("row2");print(row);formal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
+  else{print("no match")}
+  row <- row + 1
+}
