@@ -7,55 +7,89 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 ```{r}
+library(stringi)
+require(tidyr)
+require(ggplot2)
+library(plyr)
+library(pipeR)
+library(rlist)
+library(readxl)
+require(dplyr)
+require(data.table)
+library(janitor)
 setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
-germline <- read.delim(file="corrected_allmatches.txt")
-germline <- separate(germline, Ind1, c("HMB", "HMB_ID"), sep="HMB")
-germline <- separate(germline, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
-germline <- germline[,-1]
-germline <- germline[,-2]
-ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+#germline <- read.delim(file="merged_IBD_sharing")
+#germline <- separate(germline, Ind1, c("HMB", "HMB_ID"), sep="HMB")
+#germline <- separate(germline, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
+#germline <- germline[,-1]
+#germline <- germline[,-2]
+#individuals_in_pairs <- read.delim(file="individuals_in_pairs_HMB_ID")
+unrelated_germline <- read.delim(file="120unrelateds_IBD_sharing_IDconverted")
+#unrelated_germline <- separate(unrelated_germline, Ind1, c("HMB", "HMB_ID"), sep="HMB")
+#unrelated_germline <- separate(unrelated_germline, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
+#ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
 #HMB to Scelza conversion
-ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
-ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
-ID_conversion <- ID_conversion[,2:3]
-Himba_unrelated <- read.delim(file="keep_Himba_unrel4th.txt")
+#ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+#ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+#ID_conversion <- ID_conversion[,-1]
+Himba_unrelated <- read.delim(file="unrelateds_H3_120_IDconverted", sep =" ")
+
+
+```
+```{r}
+#germline <- germline[germline$Ind1 %in% individuals_in_pairs$Sample_ID,]
+#germline <- germline[germline$Ind2 %in% individuals_in_pairs$Sample_ID,]
 ```
 
 
 ```{r}
 #convert IDs in germline to IDs that will match the random, formal, and informal pairs sheet
-ID_conversion$diff <- NA
+#ID_conversion$diff <- NA
 
-row <- 1
-while(row <= nrow(ID_conversion)){
-  if(ID_conversion[row, 1] == ID_conversion[row, 2])
-  {ID_conversion[row,3]<-"no"}
-  else{ID_conversion[row,3]<-"yes"}
-  row <- row + 1
-}
+#row <- 1
+#while(row <= nrow(ID_conversion)){
+  #if(ID_conversion[row, 1] == ID_conversion[row, 2])
+  #{ID_conversion[row,3]<-"no"}
+  #else{ID_conversion[row,3]<-"yes"}
+  #row <- row + 1
+#}
 
-row <- 1
-while(row <= nrow(germline)){
-  if (germline[row,1] %in% ID_conversion$HMB_ID){
-    if (ID_conversion[ID_conversion$HMB_ID==germline[row,1], 3]=="yes")
-    {germline[row,1]<-ID_conversion[ID_conversion$HMB_ID==germline[row,1], 2]}
-    else{print("same")}}
-  else if (germline[row,1] %in% ID_conversion$Scelza_ID){print("already Scelza")}
-  else{print("huh")}
-  row <- row + 1}
+#row <- 1
+#while(row <= nrow(germline)){
+  #if (germline[row,1] %in% ID_conversion$HMB_ID){
+   #if (ID_conversion[ID_conversion$HMB_ID==germline[row,1], 3]=="yes")
+    #{germline[row,1]<-ID_conversion[ID_conversion$HMB_ID==germline[row,1], 2]}
+    #else{print("same")}}
+  #else if (germline[row,1] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  #else{print("huh")}
+  #row <- row + 1}
 
-row <- 1
-while(row <= nrow(germline)){
-  if (germline[row,2] %in% ID_conversion$HMB_ID){
-    if (ID_conversion[ID_conversion$HMB_ID==germline[row,2], 3]=="yes")
-    {germline[row,2]<-ID_conversion[ID_conversion$HMB_ID==germline[row,2], 2]; print("diff")}
-    else{print("same")}}
-  else if (germline[row,2] %in% ID_conversion$Scelza_ID){print("already Scelza")}
-  else{print("huh")}
-  row <- row + 1}
+#row <- 1
+#while(row <= nrow(germline)){
+  #if (germline[row,2] %in% ID_conversion$HMB_ID){
+    #if (ID_conversion[ID_conversion$HMB_ID==germline[row,2], 3]=="yes")
+    #{germline[row,2]<-ID_conversion[ID_conversion$HMB_ID==germline[row,2], 2]; print("diff")}
+    #else{print("same")}}
+  #else if (germline[row,2] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  #else{print("huh")}
+  #row <- row + 1}
+
+#Himba_unrelated <- separate(Himba_unrelated, Sample_ID, c("HMB", "HMB_ID"), sep="HMB")
+#for (row in 1:nrow(Himba_unrelated)){
+    #for(name in 1:nrow(ID_conversion))
+    #if (Himba_unrelated[row, ]$HMB_ID == ID_conversion[name, ]$HMB_ID)
+      #Himba_unrelated[row, ]$HMB_ID <- ID_conversion[name, ]$Scelza_ID
+#}
+#Himba_unrelated <- Himba_unrelated[,2]
+#write.table(germline, file = "merged_IBD_sharing_IDconverted", sep = "\t")
+#write.table(Himba_unrelated, file="unrelateds_H3_120_IDconverted")
                       
 ```
 ```{r}
+#can just load in germline file with corrected IDs already
+setwd("/Users/gillianmeeks/Dropbox/My Mac (Gillians-MacBook-Pro-2.local)/Desktop/R_projects/HLA")
+germline <- read.delim(file="inds_in_pairs_IBD_sharing_ID_converted_real", sep=" ")
+
 #for each pairing (formal, informal, random) get their IBD sharing
 formal$IBD_sharing <- 0
 informal$IBD_sharing <- 0
@@ -64,83 +98,78 @@ random$IBD_sharing <- 0
 
 #for each pair in the formal pairs dataframe sum their IBD and put in new column (13)
 #formal
+
 row <- 1
 while(row <= nrow(formal)){
   all_segs <- 0
-  one <- formal[row,1]
-  two <- formal[row,2]
-  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
-  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  one <- formal[row,10]
+  two <- formal[row,11]
+  rows_of_segs<- nrow(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {formal[row,13]<-sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  {formal[row,12] <-  sum(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {formal[row,13]<-sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
-  else{print("no match")}
+  {formal[row,12] <- sum(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])}
+  else{formal[row,12]<-10000}
   row <- row + 1
 }
+
 ```
 
 ```{r}
 #informal
-informal_test <- informal[,10:11]
-informal_ <- vector()
 row <- 1
 while(row <= nrow(informal)){
   all_segs <- 0
-  one <- informal_test[row,1]
-  two <- informal_test[row,2]
-  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
-  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  one <- informal[row,10]
+  two <- informal[row,11]
+  rows_of_segs<- nrow(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {informal_<-c(informal_, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
+  {informal[row,12] <-  sum(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {informal_<-c(informal_, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
-  else{print("no match")}
+  {informal[row,12] <- sum(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])}
+  else{informal[row,12]<-10000}
   row <- row + 1
 }
 ```
 ```{r}
-#random
-random_test <- random[,10:11]
-random_ <- vector()
-row <- 1
-while(row <= nrow(random_test)){
+#random (with HLA-LA output individuals)
+ row <- 1
+while(row <= nrow(random)){
   all_segs <- 0
-  one <- random_test[row,1]
-  two <- random_test[row,2]
-  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
-  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  one <- random[row,10]
+  two <- random[row,11]
+  rows_of_segs<- nrow(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {random_<-c(random_, sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7]))}
+  {random[row,12] <-  sum(germline[(germline$Ind1==one[[1]] & germline$Ind2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {random_<-c(random_, sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7]))}
-  else{print("no match")}
+  {random[row,12] <- sum(germline[(germline$Ind1==two[[1]] & germline$Ind2==one[[1]]), ] [7])}
+  else{random[row,12]<-10000}
   row <- row + 1
 }
 ```
 ```{r}
-#IBD from the whole Himba_unrelated
-test <- as.data.frame(combn(Himba_unrelated,2))
+#IBD from the whole Himba_unrelated 120 individuals
+test <- as.data.frame(combn(Himba_unrelated$x,2))
 test <- t(test)
 test <- as.data.frame(test)
 test$IBD_sharing <- 0
 
-#test$IBD_sharing <- 0
-storage <- vector()
 row <- 1
 while(row <= nrow(test)){
   all_segs <- 0
   one <- test[row,1]
   two <- test[row,2]
-  rows_of_segs<- nrow(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])
-  rows_of_segs2 <- nrow(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])
+  rows_of_segs<- nrow(unrelated_germline[(unrelated_germline$HMB_ID==one[[1]] & unrelated_germline$HMB_ID2==two[[1]]), ] [7])
+  rows_of_segs2 <- nrow(unrelated_germline[(unrelated_germline$HMB_ID==two[[1]] & unrelated_germline$HMB_ID2==one[[1]]), ] [7])
   if(rows_of_segs>0)
-  {test[row,3] <-  sum(germline[(germline$HMB_ID==one[[1]] & germline$HMB_ID2==two[[1]]), ] [7])}
+  {test[row,3] <-  sum(unrelated_germline[(unrelated_germline$HMB_ID==one[[1]] & unrelated_germline$HMB_ID2==two[[1]]), ] [7])}
   else if(rows_of_segs2>0)
-  {test[row,3] <- sum(germline[(germline$HMB_ID==two[[1]] & germline$HMB_ID2==one[[1]]), ] [7])}
-  else{print("no match")}
+  {test[row,3] <- sum(unrelated_germline[(unrelated_germline$HMB_ID==two[[1]] & unrelated_germline$HMB_ID2==one[[1]]), ] [7])}
+  else{test[row,3]<-1000}
   row <- row + 1
 }
-#storage <- as.numeric(storage$storage)
-hist(storage)
+
 ```
