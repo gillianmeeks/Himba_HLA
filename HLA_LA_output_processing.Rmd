@@ -19,7 +19,8 @@ knitr::opts_chunk$set(echo = TRUE)
 setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
 couples <- read_excel("HLA_Pairs_Sort.xls")
 ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
-Himba_unrelated <- read.delim(file="keep_Himba_unrel4th.txt")
+Himba_unrelated <- read.delim(file="unrelateds_H3_120.txt")
+individuals_in_pairs <- read.delim(file="individuals_in_pairs")
 sample_data <- read.table(file="HLA_typed_data/HLA_LA_output", sep="", row.names=NULL)
 sample_data<- sample_data %>%
   row_to_names(row_number=1)
@@ -126,9 +127,15 @@ formal <- formal[!duplicated(formal),]
 informal <- informal[!duplicated(informal),]
 num_pairs <- nrow(formal) + nrow(informal)
 #replace Himba_unrelated with relevant_data ids for now
-ind1 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace=TRUE)
-ind2 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace = TRUE)
+#I SHOULD PROBABLY CHANGE RANDOMS TO RANDOM INDIVIDUALS IN PAIRS DATA OR NOT???
+#ind1 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace=TRUE)
+#ind2 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace = TRUE)
+#below is sampling random pairings of the individuals in pairs
+ind1 <- sample(unique(individuals_in_pairs$Sample_ID), num_pairs, replace=TRUE)
+ind2 <- sample(unique(individuals_in_pairs$Sample_ID), num_pairs, replace=TRUE)
+
 random <- data.frame(ind1, ind2)
+
 
 #make sure the random pairs are two different individuals
 row <- 1
@@ -191,8 +198,8 @@ while(k <= length(unique_samples)){
 #write comparison scores into random, formal, informal
 #formal
 formal$Total_sim <- 0
-formal$Female_ID[1]<- 3000
-formal$Male_ID[1]<- 3061
+#formal$Female_ID[1]<- 3000
+#formal$Male_ID[1]<- 3061
 formal <- formal %>% relocate(Female_ID, .after=Total_sim)
 formal <- formal %>% relocate(Male_ID, .after=Total_sim)
 row <- 1
@@ -242,8 +249,8 @@ formal$Total_sim <- apply(X=formal[,1:8], MARGIN=1, FUN=sum)
 
 ```{r}
 informal$Total_sim <- 0
-informal$Female_ID[1]<- 3000
-informal$Male_ID[1]<- 3061
+#informal$Female_ID[1]<- 3000
+#informal$Male_ID[1]<- 3061
 informal <- informal %>% relocate(Female_ID, .after=Total_sim)
 informal <- informal %>% relocate(Male_ID, .after=Total_sim)
 row <- 1
@@ -279,8 +286,8 @@ informal$Total_sim <- apply(X=informal[,1:8], MARGIN=1, FUN=sum)
 ```{r}
 #random
 random$Total_sim <- 0
-random$ind1[1]<- 3000
-random$ind2[1]<- 3061
+#random$ind1[1]<- 3000
+#random$ind2[1]<- 3061
 random <- random %>% relocate(ind1, .after=Total_sim)
 random <- random %>% relocate(ind2, .after=Total_sim)
 row <- 1
@@ -311,3 +318,143 @@ while(row <= nrow(random)){
 random$Total_sim <- apply(X=random[,1:8], MARGIN=1, FUN=sum)
 
 ```
+```{r}
+#allele frequency
+allele_freq <- as.data.frame(table(relevant_data$Allele))
+temp<-as.data.frame(stri_split_fixed(allele_freq$Var1, "*"))
+temp<- as.data.frame(t(temp))
+allele_freq$Gene <- temp$V1
+allele_freq$Allele <- temp$V2
+
+A <- allele_freq[allele_freq$Gene=="A",]
+A <- A[,-4]
+A <- A[,-3]
+A$Allele <- A$Var1
+A <- A[,-1]
+A <- A %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(A$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(A, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(A$Freq),2)), color="black", size=2)
+
+```
+```{r}
+B <- allele_freq[allele_freq$Gene=="B",]
+B <- B[,-4]
+B <- B[,-3]
+B$Allele <- B$Var1
+B <- B[,-1]
+B <- B %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(B$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(B, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(B$Freq),2)), color="black", size=2)
+
+```
+```{r}
+C <- allele_freq[allele_freq$Gene=="C",]
+C <- C[,-4]
+C <- C[,-3]
+C$Allele <- C$Var1
+C <- C[,-1]
+C <- C %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(C$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(C, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(C$Freq),2)), color="black", size=2)
+
+```
+```{r}
+DPB1 <- allele_freq[allele_freq$Gene=="DPB1",]
+DPB1 <- DPB1[,-4]
+DPB1 <- DPB1[,-3]
+DPB1$Allele <- DPB1$Var1
+DPB1 <- DPB1[,-1]
+DPB1 <- DPB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DPB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DPB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DPB1$Freq),2)), color="black", size=2)
+```
+```{r}
+DPA1 <- allele_freq[allele_freq$Gene=="DPA1",]
+DPA1 <- DPA1[,-4]
+DPA1 <- DPA1[,-3]
+DPA1$Allele <- DPA1$Var1
+DPA1 <- DPA1[,-1]
+DPA1 <- DPA1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DPA1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DPA1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DPA1$Freq),2)), color="black", size=2)
+```
+```{r}
+DQA1 <- allele_freq[allele_freq$Gene=="DQA1",]
+DQA1 <- DQA1[,-4]
+DQA1 <- DQA1[,-3]
+DQA1$Allele <- DQA1$Var1
+DQA1 <- DQA1[,-1]
+DQA1 <- DQA1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DQA1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DQA1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DQA1$Freq),2)), color="black", size=2)
+```
+
+```{r}
+DQB1 <- allele_freq[allele_freq$Gene=="DQB1",]
+DQB1 <- DQB1[,-4]
+DQB1 <- DQB1[,-3]
+DQB1$Allele <- DQB1$Var1
+DQB1 <- DQB1[,-1]
+DQB1 <- DQB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DQB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DQB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DQB1$Freq),2)), color="black", size=2)
+```
+```{r}
+DRB1 <- allele_freq[allele_freq$Gene=="DRB1",]
+DRB1 <- DRB1[,-4]
+DRB1 <- DRB1[,-3]
+DRB1$Allele <- DRB1$Var1
+DRB1 <- DRB1[,-1]
+DRB1 <- DRB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DRB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DRB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DRB1$Freq),2)), color="black", size=2)
+```
+
