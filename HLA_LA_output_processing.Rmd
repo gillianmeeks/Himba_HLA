@@ -73,41 +73,48 @@ relevant_data$proportionkMersCovered <- as.numeric(relevant_data$proportionkMers
 relevant_data$LocusAvgColumnError <- as.numeric(relevant_data$LocusAvgColumnError)
 relevant_data$perfectG <- as.numeric(relevant_data$perfectG)
 relevant_data$Sample_ID <- as.numeric(relevant_data$Sample_ID)
+relevant_data$NColumns_UnaccountedAllele_fGT0.2 <- as.numeric(relevant_data$NColumns_UnaccountedAllele_fGT0.2)
+
+#QC plots with raw data
+ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
+    geom_jitter()
+   
+   ggplot(relevant_data, aes(x=Q1, y=proportionkMersCovered))+
+    geom_jitter()
+   
+   ggplot(relevant_data, aes(x=Locus, y=NColumns_UnaccountedAllele_fGT0.2))+
+    geom_jitter()
 #Quality checking the HLA-LA output
   #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
   #drops row if <= 0.8, right now drops 17 rows
-row <- 1
-while (row <= nrow(relevant_data)){
-    if (relevant_data[row, ]$Q1 <= 0.8) {relevant_data <- relevant_data[-c(row),]}
-  row <- row + 1
-  }
+bad_Q1 <- rownames(relevant_data[relevant_data$Q1<.9,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
+
   #plot Average Coverage (check for obvious outliers), tbd what is an obvious outlier?
   #AverageCoverage fluctuates between samples and loci, but its expectation depends on average whole-genome coverage.
-   ggplot(relevant_data)+
-   geom_point(aes(x=Sample_ID, y=AverageCoverage, colour=Locus))+
-   theme_bw()
-   
-   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequecning), dropped 102 != 1
-  row <- 1
-   while (row <= nrow(relevant_data)){
-    if (relevant_data[row, ]$proportionkMersCovered != 1) {relevant_data <- relevant_data[-c(row),]}
-     row <- row + 1
-   }
+
+
+   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
+bad_kmers <- rownames(relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_kmers, ]
    
    #NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
-   for (row in 1:nrow(relevant_data)){
-    if (relevant_data[row, ]$NColumns_UnaccountedAllele_fGT0.2 != 0) {print (row)}
-   }
-  
-  #no supposed to have perfectG != 1, but there are lots...
-  for (row in 1:nrow(relevant_data)){
-    if (relevant_data[row, ]$perfectG != 1) {print (row)}
-   }
+Ncolumns_unaccounted <- rownames(relevant_data[relevant_data$NColumns_UnaccountedAllele_fGT0.2!=0,])
+
+#plots post taking out bad kmers + bad Q1
+  ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
+    geom_jitter()
    
-   #plot locus avg column error (check for obvious outliers?), not sure what is an obvious outlier
-   ggplot(relevant_data)+
-   geom_point(aes(x=Sample_ID, y=LocusAvgColumnError, colour=Locus))+
-   theme_bw()
+   ggplot(relevant_data, aes(x=Q1, y=proportionkMersCovered))+
+    geom_jitter()
+   
+   ggplot(relevant_data, aes(x=Locus, y=NColumns_UnaccountedAllele_fGT0.2))+
+    geom_jitter()
+#not supposed to have perfectG != 1, but there are lots...
+perfectGnot1 <- rownames(relevant_data[relevant_data$perfectG!=1,])
+  
 ```
 
 #Compare married couples IBF scores to informal couples IBF scores
@@ -316,7 +323,7 @@ while(row <= nrow(random)){
     }
   row <- row +1 }
 
-random$Total_sim <- apply(X=random[,1:3], MARGIN=1, FUN=sum)
+random$Total_sim <- apply(X=random[,1:8], MARGIN=1, FUN=sum)
 
 ```
 ```{r}
