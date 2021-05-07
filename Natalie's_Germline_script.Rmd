@@ -1,0 +1,178 @@
+---
+title: "Natalie_IBD sharing"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+Himba_unrelated <- read.delim(file="unrelateds_H3_120_IDconverted", sep =" ")
+unrelated_germline <- read.delim(file="120unrelateds_IBD_sharing_IDconverted")
+germline <- read.delim(file="inds_in_pairs_IBD_sharing_ID_converted_real", sep=" ")
+
+```
+```{r}
+ID_conversion$diff <- NA
+
+row <- 1
+while(row <= nrow(ID_conversion)){
+  if(ID_conversion[row, 1] == ID_conversion[row, 2])
+  {ID_conversion[row,3]<-"no"}
+  else{ID_conversion[row,3]<-"yes"}
+  row <- row + 1
+}
+
+
+Gillian_merged <- separate(Gillian_merged, Group.1, c("HMB", "HMB_ID"), sep="HMB")
+Gillian_merged <- separate(Gillian_merged, Group.2, c("HMB2", "HMB_ID2"), sep="HMB")
+Gillian_merged <- Gillian_merged[,-c(1,3)]
+row <- 1
+while(row <= nrow(Gillian_merged)){
+  if (Gillian_merged[row,1] %in% ID_conversion$HMB_ID){
+   if (ID_conversion[ID_conversion$HMB_ID==Gillian_merged[row,1], 3]=="yes")
+    {Gillian_merged[row,1]<-ID_conversion[ID_conversion$HMB_ID==Gillian_merged[row,1], 2]}
+    else{print("same")}}
+  else if (Gillian_merged[row,1] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+
+row <- 1
+while(row <= nrow(Gillian_merged)){
+  if (Gillian_merged[row,2] %in% ID_conversion$HMB_ID){
+   if (ID_conversion[ID_conversion$HMB_ID==Gillian_merged[row,2], 3]=="yes")
+    {Gillian_merged[row,2]<-ID_conversion[ID_conversion$HMB_ID==Gillian_merged[row,2], 2]}
+    else{print("same")}}
+  else if (Gillian_merged[row,2] %in% ID_conversion$Scelza_ID){print("already Scelza")}
+  else{print("huh")}
+  row <- row + 1}
+```
+
+```{r}
+random$IBD_sharing <- 0
+row<-1
+while(row <= nrow(random)){
+  all_segs <- 0
+  one <- random[row,10]
+  two <- random[row,11]
+  rows_of_segs<- nrow(Gillian_merged[(Gillian_merged$HMB_ID==one[[1]] & Gillian_merged$HMB_ID2==two[[1]]), ] [3])
+  rows_of_segs2 <- nrow(Gillian_merged[(Gillian_merged$HMB_ID==two[[1]] & Gillian_merged$HMB_ID2==one[[1]]), ] [3])
+  if(rows_of_segs>0)
+  {random[row,12] <-  sum(Gillian_merged[(Gillian_merged$HMB_ID==one[[1]] & Gillian_merged$HMB_ID2==two[[1]]), ] [3])}
+  else if(rows_of_segs2>0)
+  {random[row,12] <- sum(Gillian_merged[(Gillian_merged$HMB_ID==two[[1]] & Gillian_merged$HMB_ID2==one[[1]]), ] [3])}
+  else{random[row,12]<-10000}
+  row <- row + 1
+}
+
+```
+
+```{r}
+IBDpairs_all<-data.frame()
+cMthreshold <- 0
+
+for (chr in 1:22) {
+   inputfile <- paste("Himba_H3Africa_unrel4th.chr",chr,".phased_GERMLINE2_RoH_75_1_hap.match",sep="")
+   POP_IBD <- read.table(inputfile, header=FALSE)
+   names(POP_IBD) <- c("Ind1", "Ind2", "chr", "bpStart", "bpEnd", "rsIDStart", "rsIDEnd", "NumberOfSNPs", "cMLength", "cM", "mismatch", "Ind1 homoz match", "Ind2 homoz match")
+   longIBD <- subset(POP_IBD, POP_IBD[,9] > cMthreshold)
+   IBDpairs <- aggregate(longIBD$cMLength, by=list(longIBD$Ind1,longIBD$Ind2), FUN="sum")
+   IBDpairs_all <- rbind(IBDpairs_all, IBDpairs)
+}
+
+
+sortedIBD <- aggregate(IBDpairs_all$x, by=list(IBDpairs_all$Group.1,IBDpairs_all$Group.2), FUN="sum")
+write.table(sortedIBD,file="Himba_merged_IBD_cM0_Gillian_unrelated.txt", sep = "\t", col.names=TRUE, row.names=FALSE, quote=FALSE)
+
+IBDpairs_all<-data.frame()
+cMthreshold <- 0
+
+Gillian_unrelated <- read.delim(file="Himba_merged_IBD_cM0_Gillian_unrelated.txt")
+IBD_with_oneself <- rownames(Gillian_unrelated[Gillian_unrelated$Group.1==Gillian_unrelated$Group.2,])
+Gillian_unrelated <- Gillian_unrelated[! rownames(Gillian_unrelated) %in% IBD_with_oneself,]
+
+Natalie_merged <- read.delim(file="Himba_merged_IBD_cM0_Natalie.txt")
+IBD_with_oneself <- rownames(Natalie_merged[Natalie_merged$Group.1==Natalie_merged$Group.2,])
+Natalie_merged <- Natalie_merged[! rownames(Natalie_merged) %in% IBD_with_oneself,]
+
+Gillian_merged <- read.delim(file="Himba_merged_IBD_cM0_Gillian.txt")
+IBD_with_oneself <- rownames(Gillian_merged[Gillian_merged$Group.1==Gillian_merged$Group.2,])
+Gillian_merged <- Gillian_merged[! rownames(Gillian_merged) %in% IBD_with_oneself,]
+
+for (chr in 1:22) {
+   inputfile <- paste("Himba_merged.chr",chr,".phased_GERMLINE2_RoH_20_1_hap.match",sep="")
+   POP_IBD <- read.table(inputfile, header=FALSE)
+   names(POP_IBD) <- c("Ind1", "Ind2", "chr", "bpStart", "bpEnd", "rsIDStart", "rsIDEnd", "NumberOfSNPs", "cMLength", "cM", "mismatch", "Ind1 homoz match", "Ind2 homoz match")
+   longIBD <- subset(POP_IBD, POP_IBD[,9] > cMthreshold)
+   IBDpairs <- aggregate(longIBD$cMLength, by=list(longIBD$Ind1,longIBD$Ind2), FUN="sum")
+   IBDpairs_all <- rbind(IBDpairs_all, IBDpairs)
+}
+
+
+
+sortedIBD <- aggregate(IBDpairs_all$x, by=list(IBDpairs_all$Group.1,IBDpairs_all$Group.2), FUN="sum")
+write.table(sortedIBD,file="Himba_merged_IBD_cM0_Gillian.txt", sep = "\t", col.names=TRUE, row.names=FALSE, quote=FALSE)
+
+par(mfrow=c(1,1))
+hist(sortedIBD$x, breaks=100,col=c("red"),xlab="Shared IBD Segment Lengths in (cM)")
+
+#########
+himba_merged_ibdpairs <- read.table("~/Desktop/ExampleIBD.txt", header=TRUE)
+View(himba_merged_ibdpairs)
+
+zoom <- himba_merged_ibdpairs %>%
+  filter(x < 400) 
+head(zoom)     
+hist(zoom$x, breaks=100)
+hist(zoom$log_x)
+
+himba_merged_ibdpairs <- himba_merged_ibdpairs %>%
+  mutate(log_x = log(x))
+head(himba_merged_ibdpairs)
+hist(himba_merged_ibdpairs$log_x,
+     breaks=seq(1,9,1),
+     col="lightblue")
+
+par(mfrow=c(1,2))
+hist(himba_merged_ibdpairs$x,
+     breaks=100, col="red",
+     main="Himba IBD Sharing",
+     xlab="Total IBD")
+hist(zoom$x, breaks=seq(0,100,1), col="red",
+     main="Zoomed: Himba IBD Sharing",
+     xlab="Total IBD < 100")
+
+range(himba_merged_ibdpairs$x) # 3 - 3795.7
+mean(himba_merged_ibdpairs$x) # 33.2616
+# Create mode function.
+getmode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+getmode(himba_merged_ibdpairs$x) # mode = 8.52 (but bin with most is 4-5 (look below))
+
+test <- himba_merged_ibdpairs %>%
+  filter(x < 50)
+hist(test$x,
+     breaks=seq(0,50,1)) # bin with the most is 4-5 (2nd_most = 5-6; 3rd most = 3-4)
+
+View(himba_merged_ibdpairs)
+hist(himba_merged_ibdpairs$log_x)
+
+############ cM 0 ##############
+
+himba_ibdpairs_cM0 <- read.table("~/Desktop/Himba_merged_IBD_cM0.txt", header=TRUE)
+View(himba_ibdpairs_cM0)
+
+himba_ibdpairs_cM0 <- himba_ibdpairs_cM0 %>%
+  mutate(log_x = log(x))
+View(himba_ibdpairs_cM0)
+
+hist(himba_ibdpairs_cM0$x,
+     breaks=seq(0,7020,1))
+range(himba_ibdpairs_cM0$x)
+
+zoom_cM0 <- himba_ibdpairs_cM0 %>%
+  filter(x < 500)
+hist(zoom_cM0$x,
+     breaks=seq(0,500,1))
+```
+
