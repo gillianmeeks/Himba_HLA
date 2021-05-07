@@ -79,6 +79,12 @@ relevant_data$NColumns_UnaccountedAllele_fGT0.2 <- as.numeric(relevant_data$NCol
 ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
     geom_jitter()
    
+ggplot(relevant_data, aes(x=Locus, y=proportionkMersCovered))+
+  geom_jitter()
+
+ggplot(relevant_data, aes(x=Locus, y=Q1))+
+  geom_jitter()
+
    ggplot(relevant_data, aes(x=Q1, y=proportionkMersCovered))+
     geom_jitter()
    
@@ -87,6 +93,7 @@ ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
 #Quality checking the HLA-LA output
   #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
   #drops row if <= 0.8, right now drops 17 rows
+bad_Q1_alleles <- relevant_data[relevant_data$Q1<.9, 3]
 bad_Q1 <- rownames(relevant_data[relevant_data$Q1<.9,])
 
 relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
@@ -96,11 +103,12 @@ relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
 
 
    #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
+bad_kmers_alleles <- relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,3]
 bad_kmers <- rownames(relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,])
 
 relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_kmers, ]
    
-   #NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
+#NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
 Ncolumns_unaccounted <- rownames(relevant_data[relevant_data$NColumns_UnaccountedAllele_fGT0.2!=0,])
 
 #plots post taking out bad kmers + bad Q1
@@ -125,6 +133,11 @@ couples_no_NA <- couples[!is.na(couples$current_status),]
 formal <- couples_no_NA[couples_no_NA$current_status!="Informal",2:3]
 informal <- couples_no_NA[couples_no_NA$current_status=="Informal",2:3]
 
+individuals_in_pairs_no_IBD_data <- as.data.frame(c(127, 366, 862, 465, 424, 5527, 484, 3004))
+individuals_in_pairs_no_IBD_data$Sample_ID <- individuals_in_pairs_no_IBD_data$`c(127, 366, 862, 465, 424, 5527, 484, 3004)`
+
+individuals_in_pairs <- anti_join(individuals_in_pairs, individuals_in_pairs_no_IBD_data)
+
 #add two individuals to formal whose love_match=no, but no current_status
 formal <- rbind(formal, couples[126, 2:3])
 formal <- rbind(formal, couples[129, 2:3])
@@ -132,16 +145,25 @@ formal <- rbind(formal, couples[129, 2:3])
 #extract same pairing occuring on multiple rows
 formal <- formal[!duplicated(formal),]
 informal <- informal[!duplicated(informal),]
-num_pairs <- nrow(formal) + nrow(informal)
+num_pairs <- 175
+
+#HLA_LA_inds <- read.delim("HLA_LA_output_individuals_4_2_21")
+#putting all possible HLA_LA output pairs into random
+test <- as.data.frame(combn(HLA_LA_inds$Sample_ID,2))
+test <- t(test)
+random <- as.data.frame(test)
+random$ind1 <- random$V1
+random$ind2 <- random$V2
+random <- random[,-c(1,2)]
 #replace Himba_unrelated with relevant_data ids for now
 #I SHOULD PROBABLY CHANGE RANDOMS TO RANDOM INDIVIDUALS IN PAIRS DATA OR NOT???
-ind1 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace=TRUE)
-ind2 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace = TRUE)
+#ind1 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace=TRUE)
+#ind2 <- sample(unique(relevant_data$Sample_ID), num_pairs, replace = TRUE)
 #below is sampling random pairings of the individuals in pairs
 #ind1 <- sample(unique(individuals_in_pairs$Sample_ID), num_pairs, replace=TRUE)
 #ind2 <- sample(unique(individuals_in_pairs$Sample_ID), num_pairs, replace=TRUE)
 
-random <- data.frame(ind1, ind2)
+#random <- data.frame(ind1, ind2)
 
 
 #make sure the random pairs are two different individuals
