@@ -98,6 +98,12 @@ random$IBD_sharing <- 0
 
 #for each pair in the formal pairs dataframe sum their IBD and put in new column (13)
 #formal
+#take out pairs with no IBD data
+#no_IBD_data_formal <- rownames(formal[formal$IBD_sharing==10000.00,])
+#formal <- formal[ ! rownames(formal) %in% no_IBD_data_formal, ]
+
+formal <- formal[-c(13,17,18,67,68,77,81,82,83,86),]
+informal <- informal[-c(19,61,66),]
 
 row <- 1
 while(row <= nrow(formal)){
