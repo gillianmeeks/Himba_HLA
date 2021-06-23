@@ -1,0 +1,154 @@
+---
+title: "Paternity+Maternity_analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stringi)
+require(tidyr)
+require(ggplot2)
+library(plyr)
+library(pipeR)
+library(rlist)
+library(readxl)
+require(dplyr)
+require(data.table)
+library(janitor)
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+marriage<- read.table("marriage_records.csv", header=T, sep=",")
+informal<- read.table("informal_partner_paternity_records.csv", header=T, sep=",")
+informal_ <- read.table("informal_partner_from_relationship_recalls.csv", header=T, sep=",")
+individuals_in_pairs_what_I_had_before <- read.table("individuals_in_pairs")
+individuals_in_pairs_what_I_had_before$ID <- as.integer(individuals_in_pairs_what_I_had_before$V1)
+HLA_plated <- read.table("HLA_replated_samples", sep="B")
+
+#took in POs list from Ponderosa
+Himba_POs <- read.delim("POs", sep="")
+Himba_POs <- separate(Himba_POs, Ind1, c("HMB", "HMB_ID"), sep="HMB")
+Himba_POs <- separate(Himba_POs, Ind2, c("HMB2", "HMB_ID2"), sep="HMB")
+Himba_pedigree <- read.table("Himba_pedigree.csv", sep=",", header=T)
+Himba_pedigree <- separate(Himba_pedigree, FA, c("HMB", "FA"), sep="Himba_HMB")
+Himba_pedigree <- separate(Himba_pedigree, MO, c("HMB2", "MO"), sep="Himba_HMB")
+Himba_pedigree <- Himba_pedigree[,-c(2,4)]
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+ID_conversion <- ID_conversion[,2:3]
+for (row in 1:nrow(Himba_pedigree)){
+    for(name in 1:nrow(ID_conversion))
+    if (!is.na(Himba_pedigree[row, ]$MO) && Himba_pedigree[row, ]$MO == ID_conversion[name, ]$HMB_ID)
+      Himba_pedigree[row, ]$MO <- ID_conversion[name, ]$Scelza_ID}
+for (row in 1:nrow(Himba_pedigree)){
+    for(name in 1:nrow(ID_conversion))
+    if (!is.na(Himba_pedigree[row, ]$FA) && Himba_pedigree[row, ]$FA == ID_conversion[name, ]$HMB_ID)
+      Himba_pedigree[row, ]$FA <- ID_conversion[name, ]$Scelza_ID}
+
+#Seeing which inidividuals still haven't been sequenced (not on the HLA replate or April HLA-LA or June GenDX/Omixon outputs)
+already_HLA_LA <- read.table("HLA_LA_output_individuals_4_2_21", header=T)
+GenDX_inds <- as.data.frame(as.numeric(unique(GenDX$Sample_ID)))
+already_HLA_LA <- as.data.frame(as.numeric(already_HLA_LA$Sample_ID))
+already_HLA_LA$ID  <- already_HLA_LA$`as.numeric(already_HLA_LA$Sample_ID)`
+HLA_plated_and_already_HLA_LA <- as.data.frame(c(HLA_plated$V2, already_HLA_LA$Sample_ID))
+#HLA_plated_and_already_GenDX <- as.data.frame(c(HLA_plated$V2, GenDX_inds[,1]))
+HLA_plated_and_already_GenDX$ID <- HLA_plated_and_already_GenDX$`c(HLA_plated$V2, GenDX_inds[, 1])`
+HLA_plated_and_already_HLA_LA$ID <- HLA_plated_and_already_HLA_LA$`c(HLA_plated$V2, already_HLA_LA$Sample_ID)`
+pairs_inds <- c(marriage$ego1, marriage$ego2, informal$mom_id, informal$bio_father_id, informal_$ego1, informal_$ego2)
+
+informal_paternity_assertions_individuals <- as.data.frame(unique(c(informal$mom_id, informal$bio_father_id)))
+informal_relationship_survey_individuals <- as.data.frame(unique(c(informal_$ego1, informal_$ego2)))
+informal_paternity_assertions_individuals$ID <- informal_paternity_assertions_individuals$`unique(c(informal$mom_id, informal$bio_father_id))`
+informal_relationship_survey_individuals$ID <- informal_relationship_survey_individuals$`unique(c(informal_$ego1, informal_$ego2))`
+#pairs_inds are from the lists from Sean and include all the individuals in any pair (formal, informal from relationship survey, and informal from paternity assertions)
+pairs_inds <- as.data.frame(unique(pairs_inds))
+pairs_inds$ID <- pairs_inds$`unique(pairs_inds)`
+#missing: still haven't recieved HLA_LA output and didn't replate with Dana
+missing <- anti_join(pairs_inds, HLA_plated_and_already_HLA_LA, by=NULL)
+#miss <- anti_join(pairs_inds, HLA_plated_and_already_GenDX, by=NULL)
+not_missing <- semi_join(pairs_inds, HLA_plated_and_already_HLA_LA, by=NULL)
+#not_miss <- semi_join(pairs_inds, HLA_plated_and_already_GenDX, by=NULL)
+pairs_inds <- as.data.frame(pairs_inds[,-1])
+
+
+k<-1
+while(k<=nrow(Himba_pedigree))
+{if(is.na(Himba_pedigree[k,2]))
+{Himba_pedigree[k,2]<-0}
+if(is.na(Himba_pedigree[k,3]))
+{Himba_pedigree[k,3]<-0}
+  k<-k+1}
+
+#Use pedigree data to see how many offspring each individual has
+pairs_inds$mom_to_how_many <- 0
+pairs_inds$dad_to_how_many <- 0
+
+k <- 1
+while(k <= nrow(pairs_inds))
+{
+  person <- pairs_inds[k,1]
+  if(person %in% Himba_pedigree$MO)
+  {pairs_inds[k,2] <- nrow(Himba_pedigree[Himba_pedigree$MO==person,])}
+  if(person %in% Himba_pedigree$FA)
+  {pairs_inds[k,3] <- nrow(Himba_pedigree[Himba_pedigree$FA==person,])}
+  k<- k + 1
+}
+
+#put the sex of people down (ego1 is definitely the mother as I changed that column to ego1 when the original spreadsheet said mom)
+pairs_inds$sex_of_individual <- 0
+k<-1
+while(k <= nrow(pairs_inds))
+{person <- pairs_inds[k,1]
+if(person %in% informal$ego1)
+{pairs_inds[k,4] <- "female"}
+if(person %in% informal$ego2)
+{pairs_inds[k,4] <- "male"}
+k<-k+1
+}
+
+#more sex assignment
+old_pairs_data <- read_excel("HLA_Pairs_Sort.xls")
+k<-1
+while(k <= nrow(pairs_inds))
+{person <- pairs_inds[k,1]
+if(person %in% old_pairs_data$Female_ID)
+{pairs_inds[k,4] <- "female"}
+if(person %in% old_pairs_data$Male_ID)
+{pairs_inds[k,4] <- "male"}
+k<-k+1
+}
+
+#put the order on the informal_ sheet as female first then male
+k<-1
+while(k <= nrow(informal_)){
+col1<-informal_[k,1]
+col2<-informal_[k,2]
+if(pairs_inds[pairs_inds$`pairs_inds[, -1]`==col1,4] == "male")
+{informal_[k,1] <- col2; informal_[k,2] <- col1}
+k <- k + 1}
+
+informal$female <- informal$ego1
+informal$male <- informal$ego2
+informal_$female <- informal_$ego1
+informal_$male <- informal_$ego2
+informal <- informal[,-c(1,2)]
+informal_ <- informal_[,-c(1,2)]
+
+all_informal <- data.table(rbind(informal[,2:3],informal_[,2:3]))
+formal <- marriage[,1:2]
+setkey(all_informal)
+#unique_informal_pairs between the two informal sheets
+unique_informal_pairs<- as.data.frame(unique(all_informal[list(female, male), nomatch = 0] ))
+
+informal$verify_paternity <- "no"
+#Verify paternity assertions
+k <- 1
+while(k<=nrow(informal)){
+  if(nrow(Himba_pedigree[Himba_pedigree$MO==informal[k,2] & Himba_pedigree$FA==informal[k,3],])> 0)
+  informal[k,4]<-"yes"
+  k <- k+1
+}
+
+
+```
+
+
