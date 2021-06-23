@@ -1,0 +1,177 @@
+---
+title: "Omixon_GenDx"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stats)
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+GenDX <- read.delim(file="14June20201_Himba_GenDX_HLA_calls.txt")
+Omixon <- read.delim(file="14June2021_Himba_Omixon_HLA_calls.txt")
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+ID_conversion <- ID_conversion[,2:3]
+sample_data <- read.table(file="HLA_typed_data/HLA_LA_output", sep="", row.names=NULL)
+sample_data<- sample_data %>%
+  row_to_names(row_number=1)
+#extract only alleles of interest A, B, C, DQA/B, DRB, DPA/B  (should I look at DRB3/4 copies?) 
+#no DRA on 4_2_21 HLA_LA_output so took out, HLA_LA paper only looks at A, B, C, DQA1, DQB1, DRB1
+alleles <- list("A", "B", "C", "DPA1", "DPB1", "DQA1", "DQB1", "DRB1")
+allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim")
+allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2")
+
+#new data frame with only desired alleles 
+relevant_data <- sample_data[sample_data[,1]%in% alleles,]
+
+#extract best prediction for each allele of each sample stored in Relevant data
+ for (row in 1:nrow(relevant_data)){ 
+      relevant_data[row, ]$Allele <- stri_extract(relevant_data[row, ]$Allele, regex = '[^;]*' )}
+
+#extract just the Himba ID under sample_ID
+for (row in 1:nrow(relevant_data)){
+    relevant_data[row, ]$Sample_ID <- stri_extract(relevant_data[row, ]$Sample_ID, regex = '[^_]*')
+}
+relevant_data$Q1 <- as.numeric(relevant_data$Q1)
+relevant_data$AverageCoverage <- as.numeric(relevant_data$AverageCoverage)
+relevant_data$CoverageFirstDecile <- as.numeric(relevant_data$CoverageFirstDecile)
+relevant_data$proportionkMersCovered <- as.numeric(relevant_data$proportionkMersCovered)
+relevant_data$LocusAvgColumnError <- as.numeric(relevant_data$LocusAvgColumnError)
+relevant_data$perfectG <- as.numeric(relevant_data$perfectG)
+relevant_data$Sample_ID <- as.numeric(relevant_data$Sample_ID)
+relevant_data$NColumns_UnaccountedAllele_fGT0.2 <- as.numeric(relevant_data$NColumns_UnaccountedAllele_fGT0.2)
+
+#Quality checking the HLA-LA output
+  #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
+  #drops row if <= 0.8, right now drops 17 rows
+bad_Q1_alleles <- relevant_data[relevant_data$Q1<.9, 3]
+bad_Q1 <- rownames(relevant_data[relevant_data$Q1<.9,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
+
+   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
+bad_kmers_alleles <- relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,3]
+bad_kmers <- rownames(relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_kmers, ]
+
+```
+```{r}
+Omixon$Sample_ID <- 0
+GenDX$Sample_ID <- 0
+#create a Sample_ID column for each allele call
+k<- 1
+while (k< nrow(GenDX)){
+  j<-k
+  while((j-k)<18){
+  GenDX[j,8]<-GenDX[k,1]
+  j <- j + 1
+  }
+k <- k+17
+}
+
+
+```
+```{r}
+GenDX <- GenDX %>% filter(row_number() %% 17 != 1) ## Delete every 3rd row starting from 1
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="_")
+GenDX <- GenDX[,-c(2,3,4,5,7,9)]
+GenDX <- separate(GenDX, Best.match, c("GenDX_1", "GenDX_2"), sep=",")
+
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="-")
+GenDX <- GenDX[,-5]
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="re")
+GenDX <- GenDX[,-5]
+GenDX <- separate(GenDX, Sample_ID, c("HMB", "Sample_ID"), sep="HMB")
+
+#move over the Sample_ID for the samples that didn't have the HMB on front
+k<-1
+while(k<2449){
+  GenDX[k,5] <- GenDX[k,4]
+  k <- k+1
+}
+#trim off the space in front of the allele names
+GenDX <- GenDX[,-4]
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+GenDX$Locus <- trim(GenDX$Locus)
+GenDX <- GenDX[GenDX[,1]%in% alleles,]
+
+
+
+```
+```{r}
+GenDX <- GenDX[GenDX[,1]%in% alleles,]
+Comparison <- GenDX
+Comparison$HLA_LA_1 <- 0
+Comparison$HLA_LA_2 <- 0
+
+relevant_data <- relevant_data %>% arrange(desc(Sample_ID))
+unique_samples <- unique(relevant_data$Sample_ID)
+df <- data.frame(unique_samples)
+df[, c(colnames(allele_sim))] <- 0
+#Initialize to just the gene name to make sure that for individuals with fewer alleles because some had insufficient quality, just the gene name is there
+df$X.A.1. <- "A"
+df$X.A.2. <- "A"
+df$X.B.1. <- "B"
+df$X.B.2. <- "B"
+df$X.C.1. <- "C"
+df$X.C.2. <- "C"
+df$X.DPA1.1. <- "DPA1"
+df$X.DPA1.2. <- "DPA1"
+df$X.DPB1.1. <- "DPB1"
+df$X.DPB1.2. <- "DPB1"
+df$X.DQA1.1. <- "DQA1"
+df$X.DQA1.2. <- "DQA1"
+df$X.DQB1.1. <- "DQB1"
+df$X.DQB1.2. <- "DQB1"
+df$X.DRB1.1. <- "DRB1"
+df$X.DRB1.2. <- "DRB1"
+df$Sample_ID <- df$unique_samples
+df <- df[,-1]
+
+#Create df, which contains each individual's allele type.  When there were alleles that were removed because of QC, the gene name is the placeholder.  Later could put in the else clause to change placeholder to NA if need be.
+k<-1
+while(k <= length(unique_samples)){
+  row <- unique_samples[k]
+  i<-1
+  j<-1
+  while(i<= length(allele_sim) & j <= length(relevant_data[relevant_data$Sample_ID==row, 3])){
+  if(relevant_data[relevant_data$Sample_ID==row, 1][j] == df[df$Sample_ID==row, ][i])
+  {df[df$Sample_ID==row, ][i] <- relevant_data[relevant_data$Sample_ID==row, 3][j]; i <- i + 1; j <-j + 1}
+    else{df[df$Sample_ID==row, ][i] <- as.character("NA") ;i<-i+1}
+  }
+  k <- k + 1
+}
+#if missing second DPB1 there is no last row, so need to manually replace
+df[df$X.DPB1.2.=="DPB1", ][16] <- as.character("NA")
+```
+
+
+```{r}
+#Order of genes was different for GenDX vs HLA_LA so had to finnagle it
+k<-1
+while(k < nrow(Comparison)){
+  if(nrow(df[df$Sample_ID==Comparison[k,]$Sample_ID,]) != 0){
+  geno <- df[df$Sample_ID==Comparison[k,]$Sample_ID,]
+  Comparison[k,5] <- geno[1];
+  Comparison[k,6] <- geno[2];
+  Comparison[k+1,5] <- geno[3];
+  Comparison[k+1,6] <- geno[4];
+  Comparison[k+2, 5] <- geno[5];
+  Comparison[k+2, 6] <- geno[6];
+  Comparison[k+3, 5] <- geno[13];
+  Comparison[k+3, 6] <- geno[14];
+  Comparison[k+4, 5] <- geno[15];
+  Comparison[k+4, 6] <- geno[16];
+  Comparison[k+5, 5] <- geno[7];
+  Comparison[k+5, 6] <- geno[8];
+  Comparison[k+6, 5] <- geno[9];
+  Comparison[k+6, 6] <- geno[10];
+  Comparison[k+7, 5] <- geno[11];
+  Comparison[k+7, 6] <- geno[12];
+  };
+  k <- k+8}
+
+```
+
