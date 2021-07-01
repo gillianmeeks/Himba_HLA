@@ -16,6 +16,7 @@ ID_conversion <- ID_conversion[,2:3]
 sample_data <- read.table(file="HLA_typed_data/HLA_LA_output", sep="", row.names=NULL)
 sample_data<- sample_data %>%
   row_to_names(row_number=1)
+#take in the HLA-LA sample_data and drop the calls that are obviously bad
 #extract only alleles of interest A, B, C, DQA/B, DRB, DPA/B  (should I look at DRB3/4 copies?) 
 #no DRA on 4_2_21 HLA_LA_output so took out, HLA_LA paper only looks at A, B, C, DQA1, DQB1, DRB1
 alleles <- list("A", "B", "C", "DPA1", "DPB1", "DQA1", "DQB1", "DRB1")
@@ -50,7 +51,7 @@ bad_Q1 <- rownames(relevant_data[relevant_data$Q1<.9,])
 
 relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
 
-   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
+  #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
 bad_kmers_alleles <- relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,3]
 bad_kmers <- rownames(relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,])
 
@@ -58,9 +59,8 @@ relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_kmers, ]
 
 ```
 ```{r}
-Omixon$Sample_ID <- 0
 GenDX$Sample_ID <- 0
-#create a Sample_ID column for each allele call
+#create a Sample_ID column for each allele call in GenDX
 k<- 1
 while (k< nrow(GenDX)){
   j<-k
@@ -173,5 +173,106 @@ while(k < nrow(Comparison)){
   };
   k <- k+8}
 
+```
+```{r}
+#Getting rid of excess stuff in Sample_ID and making sure the IDs all in the same column
+Omixon <- separate(Omixon, Sample, c("Sample_ID", "extra"), sep="-")
+Omixon <- separate(Omixon, Sample_ID, c("Sample_ID", "extra"), sep="_")
+Omixon <- Omixon[,-2]
+Omixon <- separate(Omixon, Sample_ID, c("HMB", "Sample_ID"), sep="HMB")
+
+k<-1
+while(k<923){
+  Omixon[k,2] <- Omixon[k,1]
+  k <- k+1
+}
+
+Omixon <- Omixon[,-1]
+Omixon <- separate(Omixon, Sample_ID, c("D", "Sample_ID"), sep="D")
+
+k<-911
+while(k<923){
+  Omixon[k,1] <- Omixon[k,2]
+  k <- k+1
+}
+
+Omixon <- separate(Omixon, D, c("Sample_ID", "etc"), sep="re")
+Omixon <- Omixon[,-2]
+#extracting only the first two fields
+Omixon$HLA.A <- word(Omixon$HLA.A, start=1, end=2, sep = "\\:")
+Omixon$HLA.B <-  word(Omixon$HLA.B, start=1, end=2, sep = "\\:")
+Omixon$HLA.C <-  word(Omixon$HLA.C, start=1, end=2, sep = "\\:")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DPB1 <- word(Omixon$HLA.DPB1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DQA1 <- word(Omixon$HLA.DQA1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DQB1 <- word(Omixon$HLA.DQB1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DRB1 <- word(Omixon$HLA.DRB1, start=1, end=2, sep = "\\:")
+
+Omixon <- Omixon[,c(1:13)]
+Omixon <- Omixon[,-c(7,9,12)]
+
+#take out the () at the end of some of the calls
+Omixon$HLA.A <- word(Omixon$HLA.A, 1, sep = "\\(")
+Omixon$HLA.B <-  word(Omixon$HLA.B, 1, sep = "\\(")
+Omixon$HLA.C <-  word(Omixon$HLA.C, 1, sep = "\\(")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, 1, sep = "\\(")
+Omixon$HLA.DPB1 <- word(Omixon$HLA.DPB1, 1, sep = "\\(")
+Omixon$HLA.DQA1 <- word(Omixon$HLA.DQA1, 1, sep = "\\(")
+Omixon$HLA.DQB1 <- word(Omixon$HLA.DQB1, 1, sep = "\\(")
+Omixon$HLA.DRB1 <- word(Omixon$HLA.DRB1, 1, sep = "\\(")
+
+#Also only extract first two fields for HLA-LA and GenDX
+Comparison$GenDX_1 <- word(Comparison$GenDX_1, start=1, end=2, sep = "\\:")
+Comparison$GenDX_2 <- word(Comparison$GenDX_2, start=1, end=2, sep = "\\:")
+Comparison$HLA_LA_1 <- word(Comparison$HLA_LA_1, start=1, end=2, sep = "\\:")
+Comparison$HLA_LA_2 <- word(Comparison$HLA_LA_2, start=1, end=2, sep = "\\:")
+```
+
+```{r}
+#figure out multiple Omixon calls, right now only taking Omixon calls that only had one unique 2 field call
+Comparison$Omixon_1 <- 0
+Comparison$Omixon_2 <- 0
+k<-1
+while(k < nrow(Comparison)){
+  if(nrow(Omixon[Omixon$Sample_ID==Comparison[k,]$Sample_ID,]) != 0){
+  geno <- Omixon[Omixon$Sample_ID==Comparison[k,]$Sample_ID,];
+  j<-1;
+  i<-k;
+  while(j<9){
+  if(length(na.omit(unique(geno[geno$Allele=="ALLELE_1",j+2])))==1){
+  Comparison[i,7] <- geno[geno$Allele=="ALLELE_1",j+2][1]}
+  else{Comparison[i,7] <- "HLA-multiple_Omixon1_calls or no calls"};
+  if(length(na.omit(unique(geno[geno$Allele=="ALLELE_2",j+2])))==1){
+  Comparison[i,8] <- geno[geno$Allele=="ALLELE_2",j+2][1]}
+  else{Comparison[i,8] <- "HLA-multiple_Omixon2_calls or no calls"};
+  j<-j+1;
+  i<-i+1}}
+  k <- k+8}
+
+Comparison <- separate(Comparison, Omixon_1, c("extra", "Omixon_1"), sep="HLA-")
+Comparison <- separate(Comparison, Omixon_2, c("extra", "Omixon_2"), sep="HLA-")
+Comparison <- Comparison[,-8]
+
+Comparison <- Comparison[,c(4,1,2,3,5,6,7,8)]
+```
+```{r}
+#GenDX_Omixon_1_Concordance looks to see if first Omixon allele was called in either of the GenDX allele calls and GenDX_Omixon_1_Concordance looks at the second Omixon allele
+Comparison$GenDX_Omixon_1_Concordance <- "no"
+Comparison$GenDX_Omixon_2_Concordance <- "no"
+Comparison$GenDX_1 <- trim(Comparison$GenDX_1)
+Comparison$GenDX_2 <- trim(Comparison$GenDX_2)
+
+#change NAs to 0
+Comparison <- sapply(Comparison, as.character) # since your values are `factor`
+Comparison[is.na(Comparison)] <- 0
+
+k<-1
+while (k<nrow(Comparison)){
+  if((Comparison[k,7] == Comparison[k,3]) || (Comparison[k, 7] == Comparison[k,4])){
+  Comparison[k,9] <- "yes"};
+  if((Comparison[k,8] == Comparison[k,3]) || (Comparison[k, 8] == Comparison[k,4])){ 
+  Comparison[k,10] <- "yes"};
+  k <- k+1;
+}
 ```
 
