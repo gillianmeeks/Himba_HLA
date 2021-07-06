@@ -1,0 +1,291 @@
+
+---
+title: "real_HLA_data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(stringi)
+require(tidyr)
+require(ggplot2)
+library(plyr)
+library(pipeR)
+library(rlist)
+library(readxl)
+require(dplyr)
+require(data.table)
+library(janitor)
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+all_pairs <- read.delim("all_pairs_type_num_children", sep="")
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+Himba_unrelated <- read.delim(file="Himba_unrelated")
+individuals_in_pairs <- read.delim(file="sex_and_number_children_inds_in_pairs", sep="")
+individuals_in_pairs$Sample_ID <- individuals_in_pairs$pairs_inds....1.
+individuals_in_pairs <- individuals_in_pairs[,c(5,4,2,3)]
+allele_calls <- read.delim(file="Consensus alleles", sep="")
+
+```
+```{r}
+#HMB to Scelza conversion, Himba_unrelated already converted
+#ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+#ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+#ID_conversion <- ID_conversion[,2:3]
+#Himba_unrelated <- separate(Himba_unrelated, Sample_ID, c("HMB", "HMB_ID"), sep="HMB")
+
+#for (row in 1:nrow(Himba_unrelated)){
+    #for(name in 1:nrow(ID_conversion))
+    #if (Himba_unrelated[row, ]$HMB_ID == ID_conversion[name, ]$HMB_ID)
+      #Himba_unrelated[row, ]$HMB_ID <- ID_conversion[name, ]$Scelza_ID
+#}
+#Himba_unrelated <- as.data.frame(Himba_unrelated[,2])
+#write.table(Himba_unrelated, file="Himba_unrelated")
+```
+
+#Compare married couples sim scores to informal couples sim scores
+
+```{r}
+#Set up formal and informal partnership dataframes
+#formal <- couples_no_NA[couples_no_NA$current_status!="Informal",2:3]
+#informal <- couples_no_NA[couples_no_NA$current_status=="Informal",2:3]
+
+individuals_in_pairs_no_IBD_data <- as.data.frame(c(127, 366, 862, 465, 424, 5527, 484, 3004))
+individuals_in_pairs_no_IBD_data$Sample_ID <- individuals_in_pairs_no_IBD_data$`c(127, 366, 862, 465, 424, 5527, 484, 3004)`
+
+#doing this so I don't select a random individual without IBD data
+individuals_in_pairs <- anti_join(individuals_in_pairs, individuals_in_pairs_no_IBD_data)
+
+#extract same pairing occuring on multiple rows
+num_pairs <- nrow(all_pairs)
+
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+consensus_inds <- unique(allele_calls$Sample_ID)
+#putting all possible consensus_inds pairs into random  or should I do random unrelated pairs??
+#test <- as.data.frame(combn(consensus_inds$Sample_ID,2))
+#test <- t(test)
+#random <- as.data.frame(test)
+
+female <- sample(consensus_inds, num_pairs, replace=TRUE)
+male <- sample(consensus_inds, num_pairs, replace=TRUE)
+random <- data.frame(female, male)
+
+#not actually female or male for the random pairs
+random$Type <- "random"
+random$love_match <- "null"
+random$Num_verified_children <- "null"
+
+
+#make sure the random pairs are two different individuals
+row <- 1
+while (row <= nrow(random)){
+  identical<-identical(random[row,1], random[row,2])
+  if (identical) {random[row,1] <- sample(consensus_inds, 1)}
+  row <- row + 1}
+
+all_pairs <- rbind(all_pairs, random)
+
+alleles <- list("A", "B", "C", "DPA1", "DPB1", "DQA1", "DQB1", "DRB1")
+allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim")
+allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2")
+
+#set allele sim to 0 as default
+all_pairs [, c(colnames(allele_list))] <- 0
+
+```
+
+
+```{r}
+#write comparison scores, MAKE SURE THE SIMILARITY ALGORITHM IS CORRECT check examples by hand
+all_pairs$Total_sim <- 0
+all_pairs <- all_pairs %>% relocate(female, .after=Total_sim)
+all_pairs <- all_pairs %>% relocate(male, .after=Total_sim)
+row <- 1
+while(row <= nrow(all_pairs)){
+  if(all_pairs[row,13] %in% consensus_inds & all_pairs[row,14] %in% consensus_inds)
+    {
+    female <- all_pairs[row,]$female;
+    male <- all_pairs[row,]$male;
+    female_geno <- allele_calls[allele_calls$Sample_ID==female,];
+    male_geno <- allele_calls[allele_calls$Sample_ID==male,];
+    i <- 1;
+    #manually changing female unknowns to a random integer so that it doesn't say sim is 1 if both male and female are unknown
+    if(female_geno[i,7]=="unknown"){female_geno[i,7]<-as.character(floor(runif(1, min=0, max=1000000)))};
+    if(female_geno[i,8]=="unknown"){female_geno[i,8]<-as.character(floor(runif(1, min=0, max=1000000)))};
+    while(i <= length(allele_list)){
+        #if both female alleles are the same and both male alleles are the same and the male and female match
+        if(female_geno[i,7]==female_geno[i,8] && female_geno[i,7]==male_geno[i,7] && male_geno[i,7]==male_geno[i,8]){all_pairs[row, i+3] <- 1}
+        #if two of the same in one individuals that matches one in the other 
+        else if(((female_geno[i,7] == male_geno[i,7]) || (female_geno[i,7] == male_geno[i,8])) && ((female_geno[i,8] == male_geno[i,7]) || (female_geno[i,8] == male_geno[i,8])) && ((female_geno[i,7]==female_geno[i,8]) || (male_geno[i,7]==male_geno[i,8]))){all_pairs[row, i+3] <- 0.5}
+        #if female 1 equals one of the male ones and female 2 equals one of the male ones
+        else if(((female_geno[i, 7] == male_geno[i, 7]) || (female_geno[i, 7] == male_geno[i, 8])) && ((female_geno[i,8] == male_geno[i,7]) || (female_geno[i,8] == male_geno[i,8]))){all_pairs[row, i+3] <- 1}
+        #if female 1 equals one of the male ones or female two equals one of the male ones
+        else if(((female_geno[i, 7] == male_geno[i, 7]) || (female_geno[i, 7] == male_geno[i, 8])) || ((female_geno[i, 8] == male_geno[i, 7]) || (female_geno[i, 8] == male_geno[i, 8]))){all_pairs[row, i+3] <- 0.5}
+        else {all_pairs[row,i+3]<-0};
+        i <- i + 1};
+    }
+  row <- row +1 }
+
+#Testing to make sure similarity score works
+#female_geno[1] <- "A"
+#female_geno[2] <- "b"
+#male_geno [1] <- "b"
+#male_geno [2] <- "a"
+#i<-1
+#while(i==1){
+#if(female_geno[1]==female_geno[2] && female_geno[1]==male_geno[1] && male_geno[1]==male_geno[2]){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2])) && ((female_geno[1]==female_geno[2]) || (male_geno[1]==male_geno[2]))){print("0.5")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) && ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("1")}
+#else if(((female_geno[1] == male_geno[1]) || (female_geno[1] == male_geno[2])) || ((female_geno[2] == male_geno[1]) || (female_geno[2] == male_geno[2]))){print("0.5")}
+#else{print("0")}
+ #i <- i +1}
+
+all_pairs$Total_sim <- apply(X=all_pairs[,4:11], MARGIN=1, FUN=sum)
+
+```
+
+
+```{r}
+#allele frequency
+allele_calls1 <- as.data.frame(allele_calls$Consensus_Allele1)
+allele_calls2 <- as.data.frame(allele_calls$Consensus_Allele2)
+allele_calls1$call <- allele_calls1[,1]
+allele_calls2$call <- allele_calls2[,1]
+
+allele_freq <- as.data.frame(table(rbind(allele_calls1$call, allele_calls2$call)))
+temp<-as.data.frame(stri_split_fixed(allele_freq$Var1, "*"))
+temp<- as.data.frame(t(temp))
+allele_freq$Gene <- temp$V1
+allele_freq$Allele <- temp$V2
+
+A <- allele_freq[allele_freq$Gene=="A",]
+A <- A[,-4]
+A <- A[,-3]
+A$Allele <- A$Var1
+A <- A[,-1]
+A <- A %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(A$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(A, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(A$Freq),2)), color="black", size=2)
+
+```
+```{r}
+B <- allele_freq[allele_freq$Gene=="B",]
+B <- B[,-4]
+B <- B[,-3]
+B$Allele <- B$Var1
+B <- B[,-1]
+B <- B %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(B$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(B, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(B$Freq),2)), color="black", size=2)
+
+```
+```{r}
+C <- allele_freq[allele_freq$Gene=="C",]
+C <- C[,-4]
+C <- C[,-3]
+C$Allele <- C$Var1
+C <- C[,-1]
+C <- C %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(C$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(C, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(C$Freq),2)), color="black", size=2)
+
+```
+```{r}
+DPB1 <- allele_freq[allele_freq$Gene=="DPB1",]
+DPB1 <- DPB1[,-4]
+DPB1 <- DPB1[,-3]
+DPB1$Allele <- DPB1$Var1
+DPB1 <- DPB1[,-1]
+DPB1 <- DPB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DPB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DPB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DPB1$Freq),2)), color="black", size=2)
+```
+```{r}
+DPA1 <- allele_freq[allele_freq$Gene=="DPA1",]
+DPA1 <- DPA1[,-4]
+DPA1 <- DPA1[,-3]
+DPA1$Allele <- DPA1$Var1
+DPA1 <- DPA1[,-1]
+DPA1 <- DPA1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DPA1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DPA1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DPA1$Freq),2)), color="black", size=2)
+```
+```{r}
+DQA1 <- allele_freq[allele_freq$Gene=="DQA1",]
+DQA1 <- DQA1[,-4]
+DQA1 <- DQA1[,-3]
+DQA1$Allele <- DQA1$Var1
+DQA1 <- DQA1[,-1]
+DQA1 <- DQA1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DQA1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DQA1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DQA1$Freq),2)), color="black", size=2)
+```
+
+```{r}
+DQB1 <- allele_freq[allele_freq$Gene=="DQB1",]
+DQB1 <- DQB1[,-4]
+DQB1 <- DQB1[,-3]
+DQB1$Allele <- DQB1$Var1
+DQB1 <- DQB1[,-1]
+DQB1 <- DQB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DQB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DQB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DQB1$Freq),2)), color="black", size=2)
+```
+```{r}
+DRB1 <- allele_freq[allele_freq$Gene=="DRB1",]
+DRB1 <- DRB1[,-4]
+DRB1 <- DRB1[,-3]
+DRB1$Allele <- DRB1$Var1
+DRB1 <- DRB1[,-1]
+DRB1 <- DRB1 %>%
+  arrange(desc(Allele)) %>%
+  mutate(prop=Freq / sum(DRB1$Freq)*100) %>%
+  mutate(ypos = cumsum(prop)-0.5*prop)
+
+ggplot(DRB1, aes(x="", y=prop, fill=Allele))+ geom_bar(stat="identity", width=1, color="white")+
+  coord_polar("y", start=0)+
+  theme_void()+
+  geom_text(aes(y=ypos, label=round(Freq/sum(DRB1$Freq),2)), color="black", size=2)
+```
+
