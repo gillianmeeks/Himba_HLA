@@ -1,0 +1,552 @@
+---
+title: "Omixon_GenDx"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stats)
+setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
+GenDX <- read.delim(file="14June20201_Himba_GenDX_HLA_calls.txt")
+Omixon <- read.delim(file="14June2021_Himba_Omixon_HLA_calls.txt")
+ID_conversion <- read.delim(file="Himba_ID_conversion.txt")
+ID_conversion <- separate(ID_conversion, HMB_ID.Scelza_ID, c("HMB_ID", "Scelza_ID"), sep=" ")
+ID_conversion <- separate(ID_conversion, HMB_ID, c("HMB", "HMB_ID"), sep="HMB")
+ID_conversion <- ID_conversion[,2:3]
+sample_data <- read.table(file="HLA_typed_data/HLA_LA_output", sep="", row.names=NULL)
+sample_data<- sample_data %>%
+  row_to_names(row_number=1)
+
+#take in the HLA-LA sample_data and drop the calls that are obviously bad
+#extract only alleles of interest A, B, C, DQA/B, DRB, DPA/B  (should I look at DRB3/4 copies?) 
+#no DRA on 4_2_21 HLA_LA_output so took out, HLA_LA paper only looks at A, B, C, DQA1, DQB1, DRB1
+alleles <- list("A", "B", "C", "DPA1", "DPB1", "DQA1", "DQB1", "DRB1")
+allele_list <-  data.frame("Asim", "Bsim", "Csim", "DQA1sim", "DQB1sim", "DRB1sim", "DPA1sim", "DPB1sim")
+allele_sim <- data.frame("A-1", "A-2", "B-1", "B-2", "C-1", "C-2", "DQA1-1", "DQA1-2", "DQB1-1", "DQB1-2", "DRB1-1", "DRB1-2", "DPA1-1", "DPA1-2", "DPB1-1", "DPB1-2")
+
+#new data frame with only desired alleles 
+relevant_data <- sample_data[sample_data[,1]%in% alleles,]
+
+#extract best prediction for each allele of each sample stored in Relevant data
+ for (row in 1:nrow(relevant_data)){ 
+      relevant_data[row, ]$Allele <- stri_extract(relevant_data[row, ]$Allele, regex = '[^;]*' )}
+
+#extract just the Himba ID under sample_ID
+for (row in 1:nrow(relevant_data)){
+    relevant_data[row, ]$Sample_ID <- stri_extract(relevant_data[row, ]$Sample_ID, regex = '[^_]*')
+}
+relevant_data$Q1 <- as.numeric(relevant_data$Q1)
+relevant_data$AverageCoverage <- as.numeric(relevant_data$AverageCoverage)
+relevant_data$CoverageFirstDecile <- as.numeric(relevant_data$CoverageFirstDecile)
+relevant_data$proportionkMersCovered <- as.numeric(relevant_data$proportionkMersCovered)
+relevant_data$LocusAvgColumnError <- as.numeric(relevant_data$LocusAvgColumnError)
+relevant_data$perfectG <- as.numeric(relevant_data$perfectG)
+relevant_data$Sample_ID <- as.numeric(relevant_data$Sample_ID)
+relevant_data$NColumns_UnaccountedAllele_fGT0.2 <- as.numeric(relevant_data$NColumns_UnaccountedAllele_fGT0.2)
+#QC plots with raw data
+#ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
+    #geom_jitter()
+   
+#ggplot(relevant_data, aes(x=Locus, y=proportionkMersCovered))+
+  #geom_jitter()
+
+#ggplot(relevant_data, aes(x=Locus, y=Q1))+
+  #geom_jitter()
+
+   #ggplot(relevant_data, aes(x=Q1, y=proportionkMersCovered))+
+    #geom_jitter()
+   
+   #ggplot(relevant_data, aes(x=Locus, y=NColumns_UnaccountedAllele_fGT0.2))+
+    #geom_jitter()
+#Quality checking the HLA-LA output
+  #queck Q1 is == 1 (if not very close to or equal to 1, consider dropping)
+  #drops row if <= 0.8, right now drops 17 rows
+bad_Q1_alleles <- relevant_data[relevant_data$Q1<.9, 3]
+bad_Q1 <- rownames(relevant_data[relevant_data$Q1<.9,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_Q1, ]
+
+  #plot Average Coverage (check for obvious outliers), tbd what is an obvious outlier?
+  #AverageCoverage fluctuates between samples and loci, but its expectation depends on average whole-genome coverage.
+
+
+   #proportion k-mers belonging to the called allele observed in locus input data (should == 1 for high quality Illumina sequencing), dropped 102 != 1
+bad_kmers_alleles <- relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,3]
+bad_kmers <- rownames(relevant_data[relevant_data$proportionkMersCovered<1 | relevant_data$proportionkMersCovered>1,])
+
+relevant_data <- relevant_data[ ! rownames(relevant_data) %in% bad_kmers, ]
+   
+#NColumns_UnaccountedAllele_fGT0.2 usually 0, if != 0 potentially novel allele
+#Ncolumns_unaccounted <- rownames(relevant_data[relevant_data$NColumns_UnaccountedAllele_fGT0.2!=0,])
+
+#plots post taking out bad kmers + bad Q1
+  #ggplot(relevant_data, aes(x=Locus, y=AverageCoverage))+
+    #geom_jitter()
+   
+   #ggplot(relevant_data, aes(x=Q1, y=proportionkMersCovered))+
+    #geom_jitter()
+   
+   #ggplot(relevant_data, aes(x=Locus, y=NColumns_UnaccountedAllele_fGT0.2))+
+    #geom_jitter()
+#not supposed to have perfectG != 1, but there are lots...
+#perfectGnot1 <- rownames(relevant_data[relevant_data$perfectG!=1,])
+
+```
+```{r}
+GenDX$Sample_ID <- 0
+#create a Sample_ID column for each allele call in GenDX
+k<- 1
+while (k< nrow(GenDX)){
+  j<-k
+  while((j-k)<18){
+  GenDX[j,8]<-GenDX[k,1]
+  j <- j + 1
+  }
+k <- k+17
+}
+
+
+```
+```{r}
+GenDX <- GenDX %>% filter(row_number() %% 17 != 1) ## Delete every 3rd row starting from 1
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="_")
+GenDX <- GenDX[,-c(2,3,4,5,7,9)]
+GenDX <- separate(GenDX, Best.match, c("GenDX_1", "GenDX_2"), sep=",")
+
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="-")
+GenDX <- GenDX[,-5]
+GenDX <- separate(GenDX, Sample_ID, c("Sample_ID", "etc"), sep="re")
+GenDX <- GenDX[,-5]
+GenDX <- separate(GenDX, Sample_ID, c("HMB", "Sample_ID"), sep="HMB")
+
+#move over the Sample_ID for the samples that didn't have the HMB on front
+k<-1
+while(k<2449){
+  GenDX[k,5] <- GenDX[k,4]
+  k <- k+1
+}
+#trim off the space in front of the allele names
+GenDX <- GenDX[,-4]
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+GenDX$Locus <- trim(GenDX$Locus)
+GenDX <- GenDX[GenDX[,1]%in% alleles,]
+
+
+```
+```{r}
+GenDX <- GenDX[GenDX[,1]%in% alleles,]
+Comparison <- GenDX
+
+Comparison$HLA_LA_1 <- "no HLA_LA output"
+Comparison$HLA_LA_2 <- "no HLA_LA output"
+
+relevant_data <- relevant_data %>% arrange(desc(Sample_ID))
+unique_samples <- unique(relevant_data$Sample_ID)
+df <- data.frame(unique_samples)
+df[, c(colnames(allele_sim))] <- 0
+#Initialize to just the gene name to make sure that for individuals with fewer alleles because some had insufficient quality, just the gene name is there
+df$X.A.1. <- "A"
+df$X.A.2. <- "A"
+df$X.B.1. <- "B"
+df$X.B.2. <- "B"
+df$X.C.1. <- "C"
+df$X.C.2. <- "C"
+df$X.DPA1.1. <- "DPA1"
+df$X.DPA1.2. <- "DPA1"
+df$X.DPB1.1. <- "DPB1"
+df$X.DPB1.2. <- "DPB1"
+df$X.DQA1.1. <- "DQA1"
+df$X.DQA1.2. <- "DQA1"
+df$X.DQB1.1. <- "DQB1"
+df$X.DQB1.2. <- "DQB1"
+df$X.DRB1.1. <- "DRB1"
+df$X.DRB1.2. <- "DRB1"
+df$Sample_ID <- df$unique_samples
+df <- df[,-1]
+
+#Create df, which contains each individual's allele type.  When there were alleles that were removed because of QC, the gene name is the placeholder.  Later could put in the else clause to change placeholder to NA if need be.
+k<-1
+while(k <= length(unique_samples)){
+  row <- unique_samples[k]
+  i<-1
+  j<-1
+  while(i<= length(allele_sim) & j <= length(relevant_data[relevant_data$Sample_ID==row, 3])){
+  if(relevant_data[relevant_data$Sample_ID==row, 1][j] == df[df$Sample_ID==row, ][i])
+  {df[df$Sample_ID==row, ][i] <- relevant_data[relevant_data$Sample_ID==row, 3][j]; i <- i + 1; j <-j + 1}
+    else{df[df$Sample_ID==row, ][i] <- NA ;i<-i+1}
+  }
+  k <- k + 1
+}
+#if missing second DPB1 there is no last row, so need to manually replace
+df[df$X.DPB1.2.=="DPB1", ][16] <- NA
+
+df[is.na(df)] = "ambiguous/bad quality HLA_LA call:"
+
+```
+
+
+```{r}
+#Order of genes was different for GenDX vs HLA_LA so had to finnagle it
+k<-1
+while(k < nrow(Comparison)){
+  if(nrow(df[df$Sample_ID==Comparison[k,]$Sample_ID,]) != 0){
+  geno <- df[df$Sample_ID==Comparison[k,]$Sample_ID,]
+  Comparison[k,5] <- geno[1];
+  Comparison[k,6] <- geno[2];
+  Comparison[k+1,5] <- geno[3];
+  Comparison[k+1,6] <- geno[4];
+  Comparison[k+2, 5] <- geno[5];
+  Comparison[k+2, 6] <- geno[6];
+  Comparison[k+3, 5] <- geno[13];
+  Comparison[k+3, 6] <- geno[14];
+  Comparison[k+4, 5] <- geno[15];
+  Comparison[k+4, 6] <- geno[16];
+  Comparison[k+5, 5] <- geno[7];
+  Comparison[k+5, 6] <- geno[8];
+  Comparison[k+6, 5] <- geno[9];
+  Comparison[k+6, 6] <- geno[10];
+  Comparison[k+7, 5] <- geno[11];
+  Comparison[k+7, 6] <- geno[12];
+  };
+  k <- k+8}
+
+```
+```{r}
+#Getting rid of excess stuff in Sample_ID and making sure the IDs all in the same column
+Omixon <- separate(Omixon, Sample, c("Sample_ID", "extra"), sep="-")
+Omixon <- separate(Omixon, Sample_ID, c("Sample_ID", "extra"), sep="_")
+Omixon <- Omixon[,-2]
+Omixon <- separate(Omixon, Sample_ID, c("HMB", "Sample_ID"), sep="HMB")
+
+k<-1
+while(k<923){
+  Omixon[k,2] <- Omixon[k,1]
+  k <- k+1
+}
+
+Omixon <- Omixon[,-1]
+Omixon <- separate(Omixon, Sample_ID, c("D", "Sample_ID"), sep="D")
+
+k<-911
+while(k<923){
+  Omixon[k,1] <- Omixon[k,2]
+  k <- k+1
+}
+
+Omixon <- separate(Omixon, D, c("Sample_ID", "etc"), sep="re")
+Omixon <- Omixon[,-2]
+#extracting only the first two fields
+Omixon$HLA.A <- word(Omixon$HLA.A, start=1, end=2, sep = "\\:")
+Omixon$HLA.B <-  word(Omixon$HLA.B, start=1, end=2, sep = "\\:")
+Omixon$HLA.C <-  word(Omixon$HLA.C, start=1, end=2, sep = "\\:")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DPB1 <- word(Omixon$HLA.DPB1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DQA1 <- word(Omixon$HLA.DQA1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DQB1 <- word(Omixon$HLA.DQB1, start=1, end=2, sep = "\\:")
+Omixon$HLA.DRB1 <- word(Omixon$HLA.DRB1, start=1, end=2, sep = "\\:")
+
+Omixon <- Omixon[,c(1:13)]
+Omixon <- Omixon[,-c(7,9,12)]
+
+#take out the () at the end of some of the calls
+Omixon$HLA.A <- word(Omixon$HLA.A, 1, sep = "\\(")
+Omixon$HLA.B <-  word(Omixon$HLA.B, 1, sep = "\\(")
+Omixon$HLA.C <-  word(Omixon$HLA.C, 1, sep = "\\(")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, 1, sep = "\\(")
+Omixon$HLA.DPB1 <- word(Omixon$HLA.DPB1, 1, sep = "\\(")
+Omixon$HLA.DQA1 <- word(Omixon$HLA.DQA1, 1, sep = "\\(")
+Omixon$HLA.DQB1 <- word(Omixon$HLA.DQB1, 1, sep = "\\(")
+Omixon$HLA.DRB1 <- word(Omixon$HLA.DRB1, 1, sep = "\\(")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, 1, sep = "Q")
+Omixon$HLA.A <- word(Omixon$HLA.A, 1, sep = "N")
+Omixon$HLA.B <-  word(Omixon$HLA.B, 1, sep = "N")
+Omixon$HLA.C <-  word(Omixon$HLA.C, 1, sep = "N")
+Omixon$HLA.DPA1 <- word(Omixon$HLA.DPA1, 1, sep = "N")
+Omixon$HLA.DPB1 <- word(Omixon$HLA.DPB1, 1, sep = "N")
+Omixon$HLA.DQA1 <- word(Omixon$HLA.DQA1, 1, sep = "N")
+Omixon$HLA.DQB1 <- word(Omixon$HLA.DQB1, 1, sep = "N")
+Omixon$HLA.DRB1 <- word(Omixon$HLA.DRB1, 1, sep = "N")
+Comparison$GenDX_1 <- word(Comparison$GenDX_1, 1, sep ="N")
+Comparison$GenDX_2 <- word(Comparison$GenDX_2, 1, sep ="N")
+Comparison$GenDX_1 <- word(Comparison$GenDX_1, 1, sep ="G")
+Comparison$GenDX_2 <- word(Comparison$GenDX_2, 1, sep ="G")
+
+#Also only extract first two fields for HLA-LA and GenDX
+Comparison$GenDX_1 <- word(Comparison$GenDX_1, start=1, end=2, sep = "\\:")
+Comparison$GenDX_2 <- word(Comparison$GenDX_2, start=1, end=2, sep = "\\:")
+Comparison$HLA_LA_1 <- word(Comparison$HLA_LA_1, start=1, end=2, sep = "\\:")
+Comparison$HLA_LA_2 <- word(Comparison$HLA_LA_2, start=1, end=2, sep = "\\:")
+
+
+```
+
+```{r}
+#figure out multiple Omixon calls, right now only taking Omixon calls that only had one unique 2 field call
+Comparison$Omixon_1 <- "no Omixon call"
+Comparison$Omixon_2 <- "no Omixon call"
+k<-1
+while(k < nrow(Comparison)){
+  if(nrow(Omixon[Omixon$Sample_ID==Comparison[k,]$Sample_ID,]) != 0){
+  geno <- Omixon[Omixon$Sample_ID==Comparison[k,]$Sample_ID,];
+  j<-1;
+  i<-k;
+  while(j<9){
+  if(length(na.omit(unique(geno[geno$Allele=="ALLELE_1",j+2])))==1){
+  Comparison[i,7] <- geno[geno$Allele=="ALLELE_1",j+2][1]}
+  else if(length(na.omit(unique(geno[geno$Allele=="ALLELE_1",j+2])))>1)
+  {Comparison[i,7] <- "HLA-multiple_Omixon1_calls"}
+  else if (length(na.omit(unique(geno[geno$Allele=="ALLELE_1",j+2])))==0)
+  {Comparison[i,7] <- "HLA-no_Omixon1_call"};
+  if(length(na.omit(unique(geno[geno$Allele=="ALLELE_2",j+2])))==1){
+  Comparison[i,8] <- geno[geno$Allele=="ALLELE_2",j+2][1]}
+  else if(length(na.omit(unique(geno[geno$Allele=="ALLELE_2",j+2])))>1)
+  {Comparison[i,8] <- "HLA-multiple_Omixon2_calls"}
+  else if (length(na.omit(unique(geno[geno$Allele=="ALLELE_2",j+2])))==0)
+  {Comparison[i,8] <- "HLA-no_Omixon2_call"};
+  j<-j+1;
+  i<-i+1}}
+  k <- k+8}
+
+Comparison <- separate(Comparison, Omixon_1, c("extra", "Omixon_1"), sep="HLA-")
+Comparison <- separate(Comparison, Omixon_2, c("extra", "Omixon_2"), sep="HLA-")
+Comparison <- Comparison[,-8]
+
+Comparison <- Comparison[,c(4,1,2,3,5,6,7,8)]
+```
+```{r}
+#GenDX_Omixon_1_Concordance looks to see if first Omixon allele was called in either of the GenDX allele calls and GenDX_Omixon_1_Concordance looks at the second Omixon allele
+Comparison$GenDX_Omixon_1_Concordance <- "no"
+Comparison$GenDX_Omixon_2_Concordance <- "no"
+Comparison$GenDX_1 <- trimws(Comparison$GenDX_1)
+Comparison$GenDX_2 <- trimws(Comparison$GenDX_2)
+Comparison$HLA_LA_1 <- trimws(Comparison$HLA_LA_1)
+Comparison$HLA_LA_2 <- trimws(Comparison$HLA_LA_2)
+Comparison$Omixon_1 <- trimws(Comparison$Omixon_1)
+Comparison$Omixon_2 <- trimws(Comparison$Omixon_2)
+Comparison$GenDX1_Omixon_Concordance <- "no"
+Comparison$GenDX2_Omixon_Concordance <- "no"
+
+#change NAs 
+Comparison[is.na(Comparison$GenDX_1),3] <- "no GenDX"
+Comparison[is.na(Comparison$GenDX_2),4] <- "no GenDX"
+Comparison[is.na(Comparison$HLA_LA_1),5] <- "no HLA_LA output"
+Comparison[is.na(Comparison$HLA_LA_2),6] <- "no HLA_LA output"
+Comparison[is.na(Comparison$Omixon_1),7] <- "individual not in Omixon"
+Comparison[is.na(Comparison$Omixon_2),8] <- "individual not in Omixon"
+
+#Concordance marking Omixon alleles as 1 or 2
+k<-1
+while (k<nrow(Comparison)+1){
+  if((Comparison[k,7] == Comparison[k,3]) || (Comparison[k, 7] == Comparison[k,4])){
+  Comparison[k,9] <- "yes"};
+  if((Comparison[k,8] == Comparison[k,3]) || (Comparison[k, 8] == Comparison[k,4])){ 
+  Comparison[k,10] <- "yes"};
+  k <- k+1;
+  
+}
+
+#Concordance marking GenDX alleles as 1 or 2
+k<-1
+while (k<nrow(Comparison)+1){
+  if((Comparison[k,3] == Comparison[k,7]) || (Comparison[k, 3] == Comparison[k,8])){
+  Comparison[k,11] <- "yes"};
+  if((Comparison[k,4] == Comparison[k,7]) || (Comparison[k, 4] == Comparison[k,8])){ 
+  Comparison[k,12] <- "yes"};
+  k <- k+1;
+}
+
+
+
+```
+```{r}
+#Deciding on the consensus allele if it exists
+Comparison$HLA_LA_concordance_with_GenDX_or_Omixon <- "no HLA_LA match for discordant GenDX/Omixon allele(s)"
+
+Comparison$Consensus_Allele1 <- "unknown"
+Comparison$Consensus_Allele2 <- "unknown"
+
+
+#If Omixon1_concordance and GenDX1_concordance is no, check to see if Omixon1 or GenDX1 match either HLA_LA
+k <- 1
+while(k<nrow(Comparison)+1){
+  #if no concordance b/w GenDX and Omixon
+  if(Comparison[k,9] == "no" && Comparison[k,10] == "no"){
+    #if no concordance, but no HLA_LA output
+    if(Comparison[k, 5] == "0" && Comparison[k,6] == "0"){
+      Comparison[k, 13] <- "no GenDX and Omixon concordance, but no HLA_LA calls"}
+      #if no Omixon and GenDX concordance, but HLA_LA output exists:
+      #if GenDX1 matches either HLA_LA, consensus 1 is GenDX1
+      else{ 
+        if(Comparison[k, 3] == Comparison[k,5] || Comparison[k,3] == Comparison[k, 6]){
+       Comparison[k, 13] <- "HLA_LA shows at least one match with GenDX or Omixon";
+       Comparison[k,14] <- Comparison[k,3]
+      };
+      #if GenDX2 matches either HLA_LA, consensus 2 is GenDX2
+        if(Comparison[k, 4] == Comparison[k, 5] || Comparison[k, 4] == Comparison[k,6]){
+        Comparison[k, 13] <- "HLA_LA shows at least one match with GenDX or Omixon";
+        Comparison[k,15]<- Comparison[k,4];
+      }
+      #if Omixon1 matches either HLA_LA, consensus 1 is Omixon1
+        if(Comparison[k,7] == Comparison[k,5] || Comparison[k,7] == Comparison[k,6]){
+        Comparison[k, 13] <- "HLA_LA shows at least one match with GenDX or Omixon";
+        Comparison[k, 14] <- Comparison[k,7];
+      }
+      #if Omixon2 matches either HLA_LA, consensus 2 is Omixon 2
+        if(Comparison[k, 8] == Comparison[k, 5] || Comparison[k, 8] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA shows at least one match with GenDX or Omixon";
+        Comparison[k, 15] <- Comparison[k, 8]
+      }}}
+      
+#Next if only one allele has concordance between Omixon and GenDX, compare other allele to HLA_LA
+  else {
+#If Omixon1_concordcance and GenDX1_concordance is no. Check to see if Omixon1 or GenDX1 match either HLA_LA 
+    if(Comparison[k, 9] == "no"  && Comparison[k, 11] == "no"){
+      #consensus 2 is already matching Omixon2/GenDX2
+      Comparison[k,15] <- Comparison[k,8];
+      if(Comparison[k, 7] == Comparison[k, 5] || Comparison[k, 7] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_Omixon1 match";
+        #consensus 1 is Omixon1 if there's a match
+        Comparison[k,14] <- Comparison[k,7]
+        };
+      if(Comparison[k, 3] == Comparison[k,5] || Comparison[k,3] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_GenDX1 match";
+        #consensus 1 is GenDX1 if there's a match
+        Comparison[k, 14] <- Comparison[k, 3]
+      }
+      #if both the discordant alleles match one of the HLA_LA, then unknown
+      if((Comparison[k, 3] == Comparison[k, 5] || Comparison[k, 3] == Comparison[k, 6]) && (Comparison[k, 7] == Comparison[k, 5] || Comparison[k, 7] == Comparison[k, 6])) {
+       Comparison[k, 13] <- "matches with HLA_LA for both discordant calls" 
+       Comparison[k,14] <- "unknown"
+      }}
+#If Omixon1_concordcance and GenDX2_concordance is no. Check to see if Omixon1 or GenDX2 match either HLA_LA 
+   else if(Comparison[k, 9] == "no"  && Comparison[k, 12] == "no"){
+     #consensus 2 is already matching Omixon2/GenDX1
+     Comparison[k,15] <- Comparison[k,8];
+    if(Comparison[k, 7] == Comparison[k, 5] || Comparison[k, 7] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA_Omixon1 match";
+     #consensus 1 is Omixon1 if there's a match
+      Comparison[k,14] <- Comparison[k,7]};
+    if(Comparison[k, 4] == Comparison[k,5] || Comparison[k,4] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA1_GenDX2 match";
+      ##consensus 1 is GenDX2 if there's a match
+      Comparison[k,14] <- Comparison[k, 4]
+    }
+     #if both the discordant alleles match one of the HLA_LA, then unknown
+     if((Comparison[k, 7] == Comparison[k, 5] || Comparison[k, 7] == Comparison[k, 6]) && (Comparison[k, 4] == Comparison[k,5] || Comparison[k,4] == Comparison[k, 6])){
+       Comparison[k, 13] <- "matches with HLA_LA for both discordant calls" 
+       Comparison[k,14] <- "unknown"
+     }}
+#If Omixon2_concordance and GenDX2_concordance is no. Check to see if Omixon2 or GenDX2 match either
+  else if(Comparison[k, 10] == "no"  && Comparison[k, 12] == "no"){
+    #consensus 2 is already mathcing Omixon1/GenDX1
+     Comparison[k, 15] <- Comparison[k, 7];
+    if(Comparison[k, 8] == Comparison[k, 5] || Comparison[k, 8] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA_Omixon2 match";
+      #consensus 1 is Omixon 2 if there's a match
+      Comparison[k, 14] <- Comparison[k, 8]};
+    if(Comparison[k, 4] == Comparison[k,5] || Comparison[k,4] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA_GenDX2 match";
+      #consensus 1 is GenDX 2 if there's a match
+      Comparison[k, 14] <- Comparison[k, 4]}
+     if((Comparison[k, 8] == Comparison[k, 5] || Comparison[k, 8] == Comparison[k, 6]) && (Comparison[k, 4] == Comparison[k,5] || Comparison[k,4] == Comparison[k, 6])){
+       Comparison[k, 13] <- "matches with HLA_LA for both discordant calls" 
+       Comparison[k,14] <- "unknown"
+     }}
+#If Omixon2_concordance and GenDX1_concordance is no.  Check to see if Omixon2 or GenDX1 match either
+ else if(Comparison[k, 10] == "no"  && Comparison[k, 11] == "no"){
+     #consesus 2 is already matching Omixon1/GenDX2
+     Comparison[k, 15] <- Comparison[k, 7];
+      if(Comparison[k, 8] == Comparison[k, 5] || Comparison[k, 8] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA_Omixon2 match";
+      #consensus 1 is Omixon 2 if there's a match
+      Comparison[k, 14] <- Comparison[k,8]};
+    if(Comparison[k, 3] == Comparison[k,5]|| Comparison[k,3] == Comparison[k, 6]){
+      Comparison[k, 13] <- "HLA_LA_GenDX1 match";
+      #consensus 1 is GenDX1 if there's a match
+      Comparison[k, 14] <- Comparison[k,3]}
+     if((Comparison[k, 8] == Comparison[k, 5] || Comparison[k, 8] == Comparison[k, 6]) && (Comparison[k, 3] == Comparison[k,5]|| Comparison[k,3] == Comparison[k, 6])){
+       Comparison[k, 13] <- "matches with HLA_LA for both discordant calls" 
+       Comparison[k,14] <- "unknown"
+     }}
+  #now for the cases of 3 yes's, 1 no's (when both alleles for GenDX or Omixon have the same call which match only one allele from the other)
+  else if(Comparison[k,9]=="no" && Comparison[k,10]=="yes" && Comparison[k,11] == "yes" && Comparison[k,12] == "yes"){
+    #consensus 1 is the matching Omixon2/GenDX1+2
+    Comparison[k,14]<- Comparison[k, 8];
+      if(Comparison[k, 7] == Comparison[k,5] || Comparison[k, 7] == Comparison[k,6]){
+          Comparison[k, 13] <- "HLA_LA_Omixon1 match";
+        #consensus 2 is Omixon 1 if there's a match
+        Comparison[k, 15] <- Comparison[k, 7]};
+      if(Comparison[k,3] == Comparison[k, 5] || Comparison[k,3] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_GenDX1+2 match";
+        #consesnus 2 is GenDX1+2 if there's a match
+        Comparison[k, 15] <- Comparison[k, 3]}}
+    else if(Comparison[k,9]=="yes" && Comparison[k,10]=="no" && Comparison[k,11] == "yes" && Comparison[k,12] == "yes"){
+      #consensus 1 is the matching Omixon1/GenDX1+2
+      Comparison[k,14] <- Comparison[k, 7]
+      if(Comparison[k, 8] == Comparison[k,5] || Comparison[k, 8] == Comparison[k,6]){
+          Comparison[k, 13] <- "HLA_LA_Omixon2 match";
+        #consensus 2 is Omixon 2 if there's a match
+        Comparison[k, 15] <- Comparison[k, 8]};
+      if(Comparison[k,3] == Comparison[k, 5] || Comparison[k,3] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_GenDX1+2 match";
+        #consesnus 2 is GenDX1+2 if there's a match
+        Comparison[k, 15] <- Comparison[k, 3]}}
+    else if(Comparison[k,9]=="yes" && Comparison[k,10]=="yes" && Comparison[k,11] == "no" && Comparison[k,12] == "yes"){
+      #consensus 1 is the matching Omixon1+2/GenDX2
+      Comparison[k,14] <- Comparison[k, 7]
+      if(Comparison[k, 8] == Comparison[k,5] || Comparison[k, 8] == Comparison[k,6]){
+          Comparison[k, 13] <- "HLA_LA_Omixon1+2 match";
+        #consensus 2 is Omixon1+2/GenDX2 if there's a match
+        Comparison[k, 15] <- Comparison[k, 8]};
+      if(Comparison[k,3] == Comparison[k, 5] || Comparison[k,3] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_GenDX1";
+        #consensus 2 is GenDX1 if there's a match
+        Comparison[k, 15] <- Comparison[k, 3]}}
+    else if(Comparison[k,9]=="yes" && Comparison[k,10]=="yes" && Comparison[k,11] == "yes" && Comparison[k,12] == "no"){
+      #consensus 1 is the matching Omixon1+2/GenDX1
+      Comparison[k,14] <- Comparison[k, 7]
+      if(Comparison[k, 8] == Comparison[k,5] || Comparison[k, 8] == Comparison[k,6]){
+          Comparison[k, 13] <- "HLA_LA_Omixon1+2 match";
+        #consensus 2 is Omixon1+2/GenDX1 if there's a match
+        Comparison[k, 15] <- Comparison[k, 8]};
+      if(Comparison[k,4] == Comparison[k, 5] || Comparison[k,4] == Comparison[k, 6]){
+        Comparison[k, 13] <- "HLA_LA_GenDX1";
+        #consensus 2 is GenDX2 if there's a match
+        Comparison[k, 15] <- Comparison[k, 4]}}
+    else{
+      Comparison[k, 13] <- "no HLA_LA match for discordant GenDX/Omixon allele(s)"
+  }
+   };
+  k <- k+1
+  }
+
+
+#If GenDX and Omixon agree for both alleles, consensus alleles are those calls
+k<-1
+while (k<nrow(Comparison)+1){
+  if(Comparison[k,9] == "yes" && Comparison[k,10] == "yes"){
+     Comparison[k, 13] <- "GenDX and Omixon agree for both alleles";
+     Comparison[k,14] <- Comparison[k,3];
+     Comparison[k,15] <- Comparison[k,4]};
+  k <- k +1}
+
+
+GenDX_Omixon_dont_agree <- Comparison[Comparison$HLA_LA_concordance_with_GenDX_or_Omixon != "GenDX and Omixon agree for both alleles",]
+still_missing_a_consensus_or_both_after_comparison_with_HLA_LA <- GenDX_Omixon_dont_agree[GenDX_Omixon_dont_agree$Consensus_Allele1=="unknown" | GenDX_Omixon_dont_agree$Consensus_Allele2=="unknown", ]
+not_missing_consensus_after_comparison_with_HLA_LA <- GenDX_Omixon_dont_agree[GenDX_Omixon_dont_agree$Consensus_Allele1!="unknown" & GenDX_Omixon_dont_agree$Consensus_Allele2!="unknown", ]
+
+nrow(still_missing_a_consensus_or_both_after_comparison_with_HLA_LA[!(still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_1=="no HLA_LA output" & still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_2=="no HLA_LA output"),])
+
+nrow(still_missing_a_consensus_or_both_after_comparison_with_HLA_LA[still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_1=="no HLA_LA output" & still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_2=="no HLA_LA output",])
+
+missing_consensus_even_with_HLA_LA <-still_missing_a_consensus_or_both_after_comparison_with_HLA_LA[!(still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_1=="no HLA_LA output"|still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_2=="no HLA_LA output"),]
+
+missing_consensus_but_no_HLA_LA <- still_missing_a_consensus_or_both_after_comparison_with_HLA_LA[still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_1=="no HLA_LA output"|still_missing_a_consensus_or_both_after_comparison_with_HLA_LA$HLA_LA_2=="no HLA_LA output",]
+
+anti_join(GenDX_inds, Omixon_inds, by="Sample_ID")
+anti_join(HLA_LA_inds, GenDX_inds, by="Sample_ID")
+anti_join(GenDX_inds,HLA_LA_inds, by="Sample_ID")
+
+write.table(Comparison, file="Consensus alleles")
+```
+
