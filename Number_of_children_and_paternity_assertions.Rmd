@@ -19,8 +19,6 @@ setwd("/Users/gillianmeeks/Desktop/R_projects/HLA")
 marriage<- read.table("marriage_records.csv", header=T, sep=",")
 informal<- read.table("informal_partner_paternity_records.csv", header=T, sep=",")
 informal_ <- read.table("informal_partner_from_relationship_recalls.csv", header=T, sep=",")
-individuals_in_pairs_what_I_had_before <- read.table("individuals_in_pairs")
-individuals_in_pairs_what_I_had_before$ID <- as.integer(individuals_in_pairs_what_I_had_before$V1)
 HLA_plated <- read.table("HLA_replated_samples", sep="B")
 
 #took in POs list from Ponderosa
@@ -134,11 +132,27 @@ informal <- informal[,-c(1,2)]
 informal_ <- informal_[,-c(1,2)]
 
 all_informal <- data.table(rbind(informal[,2:3],informal_[,2:3]))
-formal <- marriage[,1:2]
+
+formal <- marriage[,c(1,2,4)]
+
+k<-1
+while(k <= nrow(formal)){
+col1<-formal[k,1]
+col2<-formal[k,2]
+if(pairs_inds[pairs_inds$`pairs_inds[, -1]`==col1,4] == "male")
+{formal[k,1] <- col2; formal[k,2] <- col1}
+k <- k + 1}
+formal$female <- formal$ego1
+formal$male <- formal$ego2
+formal <- formal[,-c(1,2)]
+
 setkey(all_informal)
 #unique_informal_pairs between the two informal sheets
 unique_informal_pairs<- as.data.frame(unique(all_informal[list(female, male), nomatch = 0] ))
+unique_informal_pairs$Type <- "informal"
+unique_informal_pairs$love_match <- "Yes"
 
+formal$Type <- "formal"
 informal$verify_paternity <- "no"
 #Verify paternity assertions
 k <- 1
@@ -148,6 +162,25 @@ while(k<=nrow(informal)){
   k <- k+1
 }
 
+individuals_in_pairs <- as.data.frame(pairs_inds[,1])
+individuals_in_pairs$Sample_ID <- individuals_in_pairs[,1]
+individuals_in_pairs <- individuals_in_pairs[,-1]
+
+write.table(individuals_in_pairs, file="individuals_in_pairs")
+write.table(pairs_inds, file="sex_and_number_children_inds_in_pairs")
+
+#create dataframe with all the pairs, the type of pair, and num verified children (from pedigree)
+all_pairs <- data.frame(rbind(unique_informal_pairs, formal))
+all_pairs$Num_verified_children <- 0
+
+k<-1
+while(k<=nrow(all_pairs)){
+  if(nrow(Himba_pedigree[Himba_pedigree$MO==all_pairs[k,1] & Himba_pedigree$FA==all_pairs[k,2],])> 0)
+  {all_pairs[k,5]<-nrow(Himba_pedigree[Himba_pedigree$MO==all_pairs[k,1] & Himba_pedigree$FA==all_pairs[k,2],])};
+  k <- k+1
+}
+
+write.table(all_pairs, file="all_pairs_type_num_children")
 
 ```
 
